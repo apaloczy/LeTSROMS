@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
-from .romsshipsimulator import (
+from .romsshipsimulator.romsshipsimulator import (
       RomsShipSimulator
       )
 
-import .utils
+from .romsshipsimulator import utils
 
 __all__ = [
     'RomsShipSimulator',
