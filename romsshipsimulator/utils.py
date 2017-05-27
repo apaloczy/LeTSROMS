@@ -9,7 +9,7 @@
 
 import numpy as np
 
-__all__ = [mk_shiptrack]
+__all__ = ['mk_shiptrack']
 
 def mk_shiptrack():
     """
