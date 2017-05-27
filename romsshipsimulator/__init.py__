@@ -1,0 +1,14 @@
+# -*- coding: utf-8 -*-
+
+from .romsshipsimulator import (
+      RomsShipSimulator
+      )
+
+import .utils
+
+__all__ = [
+    'RomsShipSimulator',
+    'utils'
+    ]
+
+__version__ = '0.0.1'
