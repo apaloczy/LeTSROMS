@@ -17,6 +17,8 @@ from os.path import isfile
 from stripack import trmesh
 from pyroms.pyroms.pyroms.vgrid import z_r
 
+__all__ = ['RomsShipSimulator']
+
 class RomsShipSimulator(object):
     def __init__(self, roms_fname, xship, yship, tship, verbose=True):
         if verbose:
@@ -147,13 +149,13 @@ class RomsShipSimulator(object):
                 vship[n] = wrkl + (wrkr - wrkl)*dtn
 
         # Convert to xarray.
-        coordd = {'lat':(['latitude','longitude'], y), 'lon':(['latitude','longitude'], x)}
-        dimsd = {'latitude':ny, 'longitude':nx}
-        Uii, Vii = Ui[0], Vi[0]
-        ui = xr.DataArray(Uii, coords=coordd, dims=dimsd)
-        vi = xr.DataArray(Vii, coords=coordd, dims=dimsd)
-        vard = dict(U=ui, V=vi)
-        UVii = xr.Dataset(vard, coords=coordd)
+        # coordd = {'lat':(['latitude','longitude'], y), 'lon':(['latitude','longitude'], x)}
+        # dimsd = {'latitude':ny, 'longitude':nx}
+        # Uii, Vii = Ui[0], Vi[0]
+        # ui = xr.DataArray(Uii, coords=coordd, dims=dimsd)
+        # vi = xr.DataArray(Vii, coords=coordd, dims=dimsd)
+        # vard = dict(U=ui, V=vi)
+        # UVii = xr.Dataset(vard, coords=coordd)
         t_vship = np.tile(self.tship[np.newaxis,:], (self.N,1))
 
         # ds = xr.Dataset({'temperature': (['x', 'y', 'time'],  temp),

@@ -16,4 +16,4 @@ def mk_shiptrack():
     Creates a ship track (longitude, latitude, time)
     to serve as input to a RomsShipSimulator instance.
     """
-    return 1
+    return 'test'
