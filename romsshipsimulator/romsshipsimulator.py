@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-#
 # Description: Sample ROMS model output like a ship.
 #
 # Author:      André Palóczy
