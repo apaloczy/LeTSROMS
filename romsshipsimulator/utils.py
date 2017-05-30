@@ -9,12 +9,12 @@ __all__ = ['mk_shiptrack', 'ShipTrackError']
 
 import numpy as np
 from pygeodesy.sphericalNvector import LatLon
-aa
+
 def mk_shiptrack(waypts, sampfreq, shipspd=4, evenspacing=False, closedtrk=False, nrepeat=1, verbose=True):
     """
     Creates a ship track (longitude, latitude, time)
     to serve as input to a RomsShipSimulator instance.
-
+aa
     INPUT
     -----
     waypts:    A tuple of (longitude, latitude) arrays defining
