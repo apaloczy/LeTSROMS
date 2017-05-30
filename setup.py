@@ -16,7 +16,8 @@ setup(name='romsshipsimulator',
           'netCDF4',
           'xarray',
           'stripack',
-          'pyroms'
+          'pyroms',
+          'pygeodesy'
       ],
       test_suite = 'nose.collector',
       zip_safe=False)
