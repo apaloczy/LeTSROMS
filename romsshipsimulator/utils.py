@@ -42,12 +42,12 @@ def mk_shiptrack(waypts, sampfreq, shipspd=4, evenspacing=False, closedtrk=False
     """
     lons, lats = map(np.array, (waypts[0], waypts[1]))
     assert lons.size==lats.size, "Different number of longitudes and latitudes."
+    nwaypts = lons.size
 
     shipspd = shipspd*1852/3600 # Convert ship speed to m/s.
     sampfreq = sampfreq/3600 # convert sampling frequency to measurements/s.
-    nwaypts = lons.size
-    lontrk, lattrk = np.array([]), np.array([])
     dshp = shipspd/sampfreq # Spatial separation between measurements [m].
+    trkpts = []
     for n in range(nwaypts-1):
         wptA = LatLon(lats[n], lons[n], height=0)
         wptB = LatLon(lats[n+1], lons[n+1], height=0)
@@ -56,9 +56,9 @@ def mk_shiptrack(waypts, sampfreq, shipspd=4, evenspacing=False, closedtrk=False
         nn = int(1/dfrac) - 1 # Number of points that fit in this segment (excluding waypoints A and B).
         if nn==-1:
             raise ShipTrackError('Segment from %s to %s is too short to accomodate a ship data point.'%(wptA.toStr(), wptB.toStr()))
-        ptsAB = [wptA.intermediateTo(wptB, dfrac*ni) for ni in range(nn)]
-
-    return xship, yship, tship
+        trkpts.append([wptA.intermediateTo(wptB, dfrac*ni) for ni in range(nn)])
+    return trkpts
+    # return xship, yship, tship
 
 class ShipTrackError(Exception):
     """
