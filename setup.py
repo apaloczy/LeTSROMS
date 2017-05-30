@@ -1,0 +1,22 @@
+from setuptools import setup
+
+def readme():
+    with open('README.md') as f:
+        return f.read()
+
+setup(name='romsshipsimulator',
+      version='0.1beta',
+      description='Python module to sample outputs from the Regional Ocean Modeling System (ROMS) model simulating a ',
+      url='https://github.com/apaloczy/romsshipsimulator',
+      license='MIT',
+      packages=['romsshipsimulator'],
+      install_requires=[
+          'numpy',
+          'matplotlib',
+          'netCDF4',
+          'xarray',
+          'stripack',
+          'pyroms'
+      ],
+      test_suite = 'nose.collector',
+      zip_safe=False)
