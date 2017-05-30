@@ -4,8 +4,8 @@ Sample ROMS model output like a ship.
 
 # Dependencies
 
-+ Numpy
-+ Matplotlib
++ numpy
++ matplotlib
 + netCDF4
 + xarray
 + stripack
