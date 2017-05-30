@@ -12,7 +12,7 @@ __all__ = ['mk_shiptrack', 'ShipTrackError']
 import numpy as np
 from pygeodesy.sphericalNvector import LatLon
 
-def mk_shiptrack(waypts, sampfreq, shipspd=4, evenspacing=False, closedtrk=False, repeat=1):
+def mk_shiptrack(waypts, sampfreq, shipspd=4, evenspacing=False, closedtrk=False, repeat=1, verbose==False):
     """
     Creates a ship track (longitude, latitude, time)
     to serve as input to a RomsShipSimulator instance.
@@ -39,6 +39,7 @@ def mk_shiptrack(waypts, sampfreq, shipspd=4, evenspacing=False, closedtrk=False
     TODO
     ----
     Implement 'evenspacing' option.
+    Implement verbose messages (track lengths, numer of points).
     """
     lons, lats = map(np.array, (waypts[0], waypts[1]))
     assert lons.size==lats.size, "Different number of longitudes and latitudes."
@@ -50,16 +51,20 @@ def mk_shiptrack(waypts, sampfreq, shipspd=4, evenspacing=False, closedtrk=False
     sampfreq = sampfreq/3600 # convert sampling frequency to measurements/s.
     dshp = shipspd/sampfreq # Spatial separation between measurements [m].
     trkpts = []
-    for n in range(nwaypts-1):
-        wptA = LatLon(lats[n], lons[n])
-        wptB = LatLon(lats[n+1], lons[n+1])
-        dAB = wptA.distanceTo(wptB) # length of current segment [m].
-        dfrac = dshp/dAB # Separation between sample points as fraction of segment.
-        nn = int(1/dfrac) - 1 # Number of points that fit in this segment (excluding waypoints A and B).
-        print(round(dAB*1e-3, 1), round(dfrac, 3), nn)
-        if nn==-1:
-            raise ShipTrackError('Segment from %s to %s is too short to accomodate a ship data point.'%(wptA.toStr(), wptB.toStr()))
-        trkpts.append([wptA.intermediateTo(wptB, dfrac*ni) for ni in range(nn)])
+    for noc in range(noccupations):
+        if verbose:
+            print("")
+        for n in range(nwaypts-1):
+            wptA = LatLon(lats[n], lons[n])
+            wptB = LatLon(lats[n+1], lons[n+1])
+            dAB = wptA.distanceTo(wptB) # length of current segment [m].
+            dfrac = dshp/dAB # Separation between sample points as fraction of segment.
+            nn = int(1/dfrac) - 1 # Number of points that fit in this segment (excluding waypoints A and B).
+            print(round(dAB*1e-3, 1), round(dfrac, 3), nn)
+            if nn==-1:
+                raise ShipTrackError('Segment from %s to %s is not long enough to accomodate any ship sampling points.'%(wptA.toStr(), wptB.toStr()))
+            trkpts.append([wptA.intermediateTo(wptB, dfrac*ni) for ni in range(nn)])
+
     return trkpts
     # return xship, yship, tship
 
