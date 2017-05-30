@@ -55,14 +55,12 @@ def mk_shiptrack(waypts, sampfreq, shipspd=4, evenspacing=False, closedtrk=False
         dfrac = dAB/dshp # Separation between sample points as fraction of segment.
         nn = int(1/dfrac) - 1 # Number of points that fit in this segment (excluding waypoints A and B).
         if nn==-1:
-            raise ShipTrackError('Segment from %s to %s is too short to accomodate a ship data point.'%(wptA.toStr(), wptB.tostr()))
+            raise ShipTrackError('Segment from %s to %s is too short to accomodate a ship data point.'%(wptA.toStr(), wptB.toStr()))
         ptsAB = [wptA.intermediateTo(wptB, dfrac*ni) for ni in range(nn)]
-        lontrk = np.append(lontrk, llon)
-        lattrk = np.append(lattrk, llat)
 
     return xship, yship, tship
 
-def ShipTrackError(Exception):
+class ShipTrackError(Exception):
     """
     Error raised when a segment of the ship track is
     too short to accomodate a single ship data point.
