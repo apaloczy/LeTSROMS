@@ -15,7 +15,7 @@ from ap_tools.utils import near, gen_dates
 import pickle
 from os.path import isfile
 from stripack import trmesh
-from pyroms.vgrid import z_r
+from pyroms.pyroms.pyroms.vgrid import z_r
 
 __all__ = ['RomsShipSimulator']
 

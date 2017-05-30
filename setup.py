@@ -5,7 +5,7 @@ def readme():
         return f.read()
 
 setup(name='romsshipsimulator',
-      version='0.1beta',
+      version='0.1b0',
       description='Python module to sample outputs from the Regional Ocean Modeling System (ROMS) model simulating a ',
       url='https://github.com/apaloczy/romsshipsimulator',
       license='MIT',

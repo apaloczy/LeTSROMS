@@ -1,0 +1,6 @@
+numpy
+matplotlib
+netCDF4
+xarray
+stripack
+pyroms
