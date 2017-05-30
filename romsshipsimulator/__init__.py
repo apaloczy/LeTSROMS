@@ -8,4 +8,4 @@ __all__ = [
     'utils'
     ]
 
-__version__ = '0.1beta'
+__version__ = '0.1b0'
