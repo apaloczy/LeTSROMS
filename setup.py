@@ -6,7 +6,7 @@ def readme():
 
 setup(name='romsshipsimulator',
       version='0.1b0',
-      description='Python module to sample outputs from the Regional Ocean Modeling System (ROMS) model simulating a ship survey.',
+      description='Python module to sample outputs from the Regional Ocean Modeling System (ROMS) simulating a ship survey.',
       url='https://github.com/apaloczy/romsshipsimulator',
       license='MIT',
       packages=['romsshipsimulator'],
