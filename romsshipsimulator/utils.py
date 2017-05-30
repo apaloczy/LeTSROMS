@@ -42,8 +42,8 @@ def mk_shiptrack(waypts, sampfreq, shipspd=4, evenspacing=False, closedtrk=False
     """
     lons, lats = map(np.array, (waypts[0], waypts[1]))
     assert lons.size==lats.size, "Different number of longitudes and latitudes."
-    if closedtrk:
-        assert np.logical_and(lons[0]==lons[-1], lats[0]==lats[-1]), "First and last waypoints must be identical for closedtrk==True."
+    if closedtrk and not np.logical_and(lons[0]==lons[-1], lats[0]==lats[-1]):
+        raise ShipTrackError("First and last waypoints must be identical for closed ship tracks.")
 
     nwaypts = lons.size
     shipspd = shipspd*1852/3600 # Convert ship speed to m/s.
@@ -56,7 +56,7 @@ def mk_shiptrack(waypts, sampfreq, shipspd=4, evenspacing=False, closedtrk=False
         dAB = wptA.distanceTo(wptB) # length of current segment [m].
         dfrac = dshp/dAB # Separation between sample points as fraction of segment.
         nn = int(1/dfrac) - 1 # Number of points that fit in this segment (excluding waypoints A and B).
-        print(dAB, dfrac, dshp, nn)
+        print(round(dAB*1e-3, 1), round(dfrac, 3), nn)
         if nn==-1:
             raise ShipTrackError('Segment from %s to %s is too short to accomodate a ship data point.'%(wptA.toStr(), wptB.toStr()))
         trkpts.append([wptA.intermediateTo(wptB, dfrac*ni) for ni in range(nn)])
