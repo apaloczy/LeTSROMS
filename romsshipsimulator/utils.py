@@ -64,7 +64,7 @@ aa
             if nn==-1:
                 raise ShipTrackError('Segment from %s to %s is not long enough to accomodate any ship sampling points.'%(wptA.toStr(), wptB.toStr()))
             if verbose:
-                print("Segment %d/%d:  %s --> %s (%.3f km),"%(n+1, nsegs, wptA.toStr(), wptB.toStr(), dAB*1e-3))
+                print("Segment %d/%d:  %s --> %s (%.3f km | %s)"%(n+1, nsegs, wptA.toStr(), wptB.toStr(), dAB*1e-3, tAB))
             trkpts.append([wptA.intermediateTo(wptB, dfrac*ni) for ni in range(nn)])
         print("\n")
 
@@ -73,7 +73,11 @@ aa
 
 class ShipTrackError(Exception):
     """
-    Error raised when a segment of the ship track is
-    too short to accomodate a single ship data point.
+    Error raised when the ship track provided is invalid because:
+
+    1) The track does not close (if 'closedtrk' is 'True') or
+
+    2) A segment of the ship track is too short to accomodate
+    a single ship data point or
     """
     pass
