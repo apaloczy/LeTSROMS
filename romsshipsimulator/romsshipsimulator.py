@@ -18,6 +18,14 @@ from pyroms.vgrid import z_r
 __all__ = ['RomsShipSimulator']
 
 class RomsShipSimulator(object):
+    """
+    USAGE
+    -----
+    shiproms = RomsShipSimulator(roms_fname, xship, yship, tship, verbose=True)
+
+    Class that samples a ROMS *_his of *_avg output file simulating
+    a ship track.
+    """
     def __init__(self, roms_fname, xship, yship, tship, verbose=True):
         if verbose:
             print('Loading model grid and ship track.')
