@@ -80,7 +80,6 @@ def mk_shiptrack(waypts, tstart, sampfreq, shipspd=4, evenspacing=False, closedt
             if verbose:
                 print("Segment %d/%d:  %s --> %s (%.3f km | %s h)"%(n+1, nsegs, wptA.toStr(), wptB.toStr(), dAB*1e-3, tAB/3600))
             trkptsi = [wptA.intermediateTo(wptB, dfrac*ni) for ni in range(nn)]
-            print(trktimesi)
             trktimesi = [trktimesi + timedelta(sampdt*ni/86400) for ni in range(nn)]
             # Fix actual start time of next segment by accounting for the
             # time to cover the distance between last sample point and wptB.
@@ -92,7 +91,8 @@ def mk_shiptrack(waypts, tstart, sampfreq, shipspd=4, evenspacing=False, closedt
             trktimes.append(trktimesi)
             trktimesi = endsegtcorr # Keep most recent time for next line.
             trkptsi = wptB # Keep most recent time for next line.
-        print("\n")
+        if verbose:
+            print("\n")
 
     return np.array(trkpts), np.array(trktimes)
 
