@@ -41,10 +41,10 @@ def mk_shiptrack(waypts, tstart, sampfreq, shipspd=4, evenspacing=False, closedt
 
     OUTPUT
     ------
-    trkpts:      Array of lists containing the (lon, lat) of each
-                 ship sample point along the track.
-    trktimes:    Array of lists containing the times of each
-                 ship sample point along the track.
+    trkpts:      Array of lists of pygeodesy.sphericalNvector.LatLon
+                 objects containing the (lon, lat) of each ship sample point along the track. Each list is a segment of the track, and each LatLon is a ship sample point.
+    trktimes:    Array of lists of datetime objects containing the
+                 times of each ship sample point.
 
     TODO
     ----
@@ -86,8 +86,10 @@ def mk_shiptrack(waypts, tstart, sampfreq, shipspd=4, evenspacing=False, closedt
             # time to cover the distance between last sample point and wptB.
             ttransit = trkptsi[-1].distanceTo(wptB)/shipspd
             endsegtcorr = trktimesi[-1] + timedelta(ttransit/86400)
-            trkpts.append(trkptsi.append(wptB))
-            trktimes.append(trktimesi.append(endsegtcorr))
+            trkptsi.append(wptB)
+            trktimesi.append(endsegtcorr)
+            trkpts.append(trkptsi)
+            trktimes.append(trktimesi)
             trktimesi = endsegtcorr # Keep most recent time for next line.
             trkptsi = wptB # Keep most recent time for next line.
         print("\n")
