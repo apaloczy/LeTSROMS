@@ -62,12 +62,22 @@ class RomsShipSimulator(object):
         self.Vtrans = self.varsdict['Vtransform'][:]
         self.zr = z_r(self.h, self.hc, self.N, self.s_rho, self.Cs_r, self.zeta, self.Vtrans)
 
-    def plt_map(self):
+
+    def plt_trkmap(self):
         """
-        Plot map with the ship track.
+        Plot topography map with the ship track.
         """
         fig, ax = plt.subplots()
         return fig, ax
+
+
+    def plt_trkxyt(self):
+        """
+        Plot the ship track as a 3D line (x, y, t).
+        """
+        fig, ax = plt.subplots()
+        return fig, ax
+
 
     def chk_synopticity(self):
         """
@@ -76,7 +86,8 @@ class RomsShipSimulator(object):
         """
         return 1
 
-    def ship_sample(self, varname, interp_method='linear', cache=True, verbose=True):
+
+    def ship_sample(self, varname, interp_method='linear', cache=False, verbose=True):
         """
         Interpolate model 'varname'
         to ship track coordinates (x, y, t).
@@ -91,10 +102,11 @@ class RomsShipSimulator(object):
         # Set up spherical Delaunay mesh to horizontally
         # interpolate the wanted variable in
         # the previous and next time steps.
-        if not hasattr(self, '_trmesh_rho'):
-            pklname = 'trmesh_cache-%s'%self.filename.split('/')[-1].replace('.nc','.pkl')
+        pointtype = _get_pointtype(varname)
+        if not hasattr(self, '_trmesh_%s'%pointtype):
+            pklname = 'trmesh_%s-points_cache-%s'%(pointtype, self.filename.split('/')[-1].replace('.nc','.pkl'))
             if verbose:
-                print('Setting up Delaunay mesh for RHO points.')
+                print('Setting up Delaunay mesh for %s points.'%pointtype)
             if cache:
                 if isfile(pklname): # Load from cache if it exists.
                     self._trmesh_rho = pickle.load(open(pklname, 'rb'))
@@ -161,7 +173,8 @@ class RomsShipSimulator(object):
         # vi = xr.DataArray(Vii, coords=coordd, dims=dimsd)
         # vard = dict(U=ui, V=vi)
         # UVii = xr.Dataset(vard, coords=coordd)
-        t_vship = np.tile(self.tship[np.newaxis,:], (self.N,1))
+
+        # t_vship = np.tile(self.tship[np.newaxis,:], (self.N,1))
 
         # ds = xr.Dataset({'temperature': (['x', 'y', 'time'],  temp),
         #    ....:                  'precipitation': (['x', 'y', 'time'], precip)},
@@ -171,9 +184,12 @@ class RomsShipSimulator(object):
         #    ....:                         'reference_time': pd.Timestamp('2014-09-05')})
 
         if vroms.ndim==4:
+            t_vship = np.tile(self.tship[np.newaxis,:], (self.N,1))
             return vship, t_vship, z_vship
         if vroms.ndim==3:
+            t_vship = self.tship
             return vship, t_vship
+
 
 def _burst(arr):
     """
@@ -185,3 +201,22 @@ def _burst(arr):
         wrk = np.concatenate((wrk, np.array(arr[n])))
 
     return wrk
+
+
+def _get_pointtype(vdict, vname):
+    """
+    Given a ROMS variable name, returns
+    the type of the grid point where it
+    is located, either RHO, U, V or PSI.
+    """
+    vcoords = vdict[vname].coordinates
+    if '_rho' in vname:
+        ptype = 'RHO'
+    if '_u' in vname:
+        ptype = 'U'
+    if '_v' in vname:
+        ptype = 'V'
+    if '_psi' in vname:
+        ptype = 'PSI'
+
+    return ptype
