@@ -43,8 +43,8 @@ def mk_shiptrack(waypts, tstart, sampfreq, shipspd=4, evenspacing=False, closedt
     ------
     trkpts:      Array of lists containing the (lon, lat) of each
                  ship sample point along the track.
-    trktimes:    Array of lists containing the times of ship
-                 sample point along the track.
+    trktimes:    Array of lists containing the times of each
+                 ship sample point along the track.
 
     TODO
     ----
@@ -61,7 +61,7 @@ def mk_shiptrack(waypts, tstart, sampfreq, shipspd=4, evenspacing=False, closedt
     sampdt = 1/sampfreq         # Time between adjacent measurements [s].
     dshp = shipspd/sampfreq     # Spatial separation between adjacent measurements [m].
     trktimesi = tstart
-    trktimes = [trktimesi]
+    trktimes = []
     trkpts = []
     for nrep in range(nrepeat):
         if verbose:
@@ -75,17 +75,24 @@ def mk_shiptrack(waypts, tstart, sampfreq, shipspd=4, evenspacing=False, closedt
             dfrac = dshp/dAB # Separation between sample points
                              # as a fraction of the segment.
             nn = int(1/dfrac) - 1 # Number of points that fit in this segment (excluding waypoints A and B).
-            # print(round(dAB*1e-3, 1), round(dfrac, 3), nn).
             if nn==-1:
                 raise ShipTrackError('Segment from %s to %s is not long enough to accomodate any ship sampling points.'%(wptA.toStr(), wptB.toStr()))
             if verbose:
                 print("Segment %d/%d:  %s --> %s (%.3f km | %s h)"%(n+1, nsegs, wptA.toStr(), wptB.toStr(), dAB*1e-3, tAB/3600))
-            trkpts.append([wptA.intermediateTo(wptB, dfrac*ni) for ni in range(nn)])
+            trkptsi = [wptA.intermediateTo(wptB, dfrac*ni) for ni in range(nn)]
             print(trktimesi)
             trktimesi = [trktimesi + timedelta(sampdt*ni/86400) for ni in range(nn)]
+            trkpts.append(trkptsi)
             trktimes.append(trktimesi)
             trktimesi = trktimesi[-1] # Keep most recent time for next line.
+            trkptsi = trkptsi[-1] # Keep most recent time for next line.
+            # Fix actual start time of next segment by accounting for the
+            # time to cover the distance between last sample point and wptB.
+            ttransit = trkptsi.distanceTo(wptB)/shipspd
+            trktimesi = trktimesi + timedelta(ttransit/86400)
         print("\n")
+    trkpts.append(wptB) # Add end waypoint of last line.
+    trktimes.append(trktimesi) # Add time of arrival at last waypoint.
 
     return np.array(trkpts), np.array(trktimes)
 
