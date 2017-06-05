@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from datetime import datetime, timedelta
 import xarray as xr
 from netCDF4 import Dataset, num2date, date2num
-from ap_tools.utils import near, gen_dates
+from ap_tools.utils import near
 import pickle
 from os.path import isfile
 from stripack import trmesh
@@ -26,14 +26,13 @@ class RomsShipSimulator(object):
     Class that samples a ROMS *_his of *_avg output file simulating
     a ship track.
     """
-    def __init__(self, roms_fname, xship, yship, tship, verbose=True):
-        if verbose:
-            print('Loading model grid and ship track.')
-        # Store ship (x, y, z, t) coordinates.
-        assert xship.size==yship.size==tship.size, "(x,y,t) coordinates do not have the same size."
-        self.xship = xship
-        self.yship = yship
-        # self.zship = zship
+    def __init__(self, roms_fname, xyship, tship):
+        # Load track coordinates (x, y, t).
+        assert xyship.size==tship.size, "(x,y,t) coordinates do not have the same size."
+        xyship = _burst(xyship)
+        tship = _burst(tship)
+        self.xship = np.array([xy.lon for xy in xyship])
+        self.yship = np.array([xy.lat for xy in xyship])
         self.tship = tship
         self.nshp = tship.size
         # Store roms grid (x, y, z, t) coordinates.
@@ -175,3 +174,14 @@ class RomsShipSimulator(object):
             return vship, t_vship, z_vship
         if vroms.ndim==3:
             return vship, t_vship
+
+def _burst(arr):
+    """
+    Convert an array of lists of objects
+    into a 1D array of objects.
+    """
+    wrk = np.array([])
+    for n in range(arr.size):
+        wrk = np.concatenate((wrk, np.array(arr[n])))
+
+    return wrk
