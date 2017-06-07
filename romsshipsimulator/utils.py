@@ -1,11 +1,10 @@
 # Description: Utilities for working with
 #              the RomsShipSimulator class.
-#
-# Author:      André Palóczy
+# Author/date: André Palóczy, May/2017.
 # E-mail:      paloczy@gmail.com
-# Date:        May/2017
 
-__all__ = ['mk_shiptrack', 'ShipTrackError']
+__all__ = ['mk_shiptrack',
+           'ShipTrackError']
 
 import numpy as np
 from datetime import datetime, timedelta

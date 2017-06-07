@@ -1,8 +1,6 @@
 # Description: Sample ROMS model output like a ship.
-#
-# Author:      André Palóczy
+# Author/date: André Palóczy, May/2017.
 # E-mail:      paloczy@gmail.com
-# Date:        May/2017
 
 import numpy as np
 from matplotlib import pyplot as plt
