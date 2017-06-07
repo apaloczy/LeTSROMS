@@ -112,6 +112,7 @@ class RomsShipSimulator(object):
 
         intarr = []
         for arr in arrs:
+            # print(xn.size,yn.size,arr.shape,arr.size,mesh.npts)
             intarr.append(mesh.interp(xn, yn, arr, order=interpm)[0])
 
         return np.array(intarr)
@@ -218,23 +219,26 @@ class RomsShipSimulator(object):
 
         stail = '.ravel(), order=interpm)[0]'
         trmeshs = "self._trmesh_%s"%pointtype
+        # Bruing trmesh and pickle to the scope of the class.
+        loc_trmesh = dict(trmesh=globals()['trmesh'])
+        loc_pickle = dict(pickle=globals()['pickle'])
         if not hasattr(self, '_trmesh_%s'%pointtype):
             pklname = 'trmesh_%s-points_cache-%s'%(pointtype, self.filename.split('/')[-1].replace('.nc','.pkl'))
             if cache:
                 if isfile(pklname): # Load from cache if it exists.
                     cmd = "%s = pickle.load(open(pklname, 'rb'))"%trmeshs
-                    loc_pickle = dict(pickle=globals()['pickle'])
                     exec(cmd, loc_pickle, locals())
                 else: # Create cache if it does not exist.
                     if verbose:
                         print('Setting up Delaunay mesh for %s points.'%pointtype.upper())
+                    # print(meshs, ptt)
                     cmd = "%s = trmesh(self.lon%s.ravel()*deg2rad, self.lat%s.ravel()*deg2rad)"%(trmeshs, ptt, ptt)
-                    exec(cmd, locals())
+                    exec(cmd, loc_trmesh, locals())
                     cmd = "pickle.dump(%s, open(pklname, 'wb'))"%trmeshs
-                    exec(cmd, globals())
+                    exec(cmd, loc_pickle, locals())
             else:
                 cmd = "%s = trmesh(self.lon%s.ravel()*deg2rad, self.lat%s.ravel()*deg2rad)"%(trmeshs, ptt, ptt)
-                exec(cmd, locals())
+                exec(cmd, loc_trmesh, locals())
 
         # Store indices of adjacent time steps for each sample time.
         self.idxt = []
