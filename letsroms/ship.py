@@ -13,13 +13,13 @@ import pickle
 from os.path import isfile
 from pyroms.vgrid import z_r
 
-__all__ = ['RomsShipSimulator']
+__all__ = ['RomsShip']
 
-class RomsShipSimulator(object):
+class RomsShip(object):
     """
     USAGE
     -----
-    shiproms = RomsShipSimulator(roms_fname, xship, yship, tship, verbose=True)
+    shiproms = RomsShip(roms_fname, xship, yship, tship, verbose=True)
 
     Class that samples a ROMS *_his of *_avg output file simulating
     a ship track.

@@ -4,12 +4,12 @@ def readme():
     with open('README.md') as f:
         return f.read()
 
-setup(name='romsshipsimulator',
+setup(name='LeTSROMS',
       version='0.1b0',
       description='Python module to sample outputs from the Regional Ocean Modeling System (ROMS) simulating a ship survey.',
-      url='https://github.com/apaloczy/romsshipsimulator',
+      url='https://github.com/apaloczy/LeTSROMS',
       license='MIT',
-      packages=['romsshipsimulator'],
+      packages=['letsroms'],
       install_requires=[
           'numpy',
           'matplotlib',
