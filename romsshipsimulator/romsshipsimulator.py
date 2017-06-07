@@ -9,10 +9,10 @@ from matplotlib import pyplot as plt
 from datetime import datetime, timedelta
 import xarray as xr
 from netCDF4 import Dataset, num2date, date2num
-from ap_tools.utils import near
+from ap_tools.utils import near, get_arrdepth
+from stripack import trmesh
 import pickle
 from os.path import isfile
-from stripack import trmesh
 from pyroms.vgrid import z_r
 
 __all__ = ['RomsShipSimulator']
@@ -29,20 +29,21 @@ class RomsShipSimulator(object):
     def __init__(self, roms_fname, xyship, tship):
         # Load track coordinates (x, y, t).
         assert xyship.size==tship.size, "(x,y,t) coordinates do not have the same size."
-        xyship = _burst(xyship)
-        tship = _burst(tship)
+        xyship = self._burst(xyship)
+        tship = self._burst(tship)
         self.xship = np.array([xy.lon for xy in xyship])
         self.yship = np.array([xy.lat for xy in xyship])
         self.tship = tship
         self.nshp = tship.size
+        self._ndg = len(str(self.nshp))
         # Store roms grid (x, y, z, t) coordinates.
         self.filename = roms_fname
         self.nc = Dataset(self.filename)
         self.varsdict = self.nc.variables
-        timeroms = self.varsdict['ocean_time']
-        self.time_units = timeroms.units
-        self.troms = num2date(timeroms[:], units=self.time_units)
-        self.roms_time = timeroms[:]
+        self.troms = self.varsdict['ocean_time']
+        self.roms_time = self.troms[:] # Time in seconds from start of simulation.
+        self.time_units = self.troms.units
+        self.troms = num2date(self.troms[:], units=self.time_units)
         self.ship_time = date2num(self.tship, units=self.time_units)
         self.lonr = self.varsdict['lon_rho'][:]
         self.latr = self.varsdict['lat_rho'][:]
@@ -61,6 +62,93 @@ class RomsShipSimulator(object):
         self.zeta = self.varsdict['zeta']
         self.Vtrans = self.varsdict['Vtransform'][:]
         self.zr = z_r(self.h, self.hc, self.N, self.s_rho, self.Cs_r, self.zeta, self.Vtrans)
+
+
+    def _burst(self, arr):
+        """
+        Convert an array of lists of objects
+        into a 1D array of objects.
+        """
+        arr = np.array(arr)
+        wrk = np.array([])
+        for n in range(arr.size):
+            wrk = np.concatenate((wrk, np.array(arr[n])))
+
+        return wrk
+
+
+    def _get_pointtype(self, vname):
+        """
+        Given a ROMS variable name, returns
+        the type of the grid point where it
+        is located, either RHO, U, V or PSI.
+        """
+        vcoords = self.varsdict[vname].coordinates
+        if 'lon_rho' in vcoords:
+            ptype = 'rho'
+        if 'lon_u' in vcoords:
+            ptype = 'u'
+        if 'lon_v' in vcoords:
+            ptype = 'v'
+        if 'lon_psi' in vcoords:
+            ptype = 'psi'
+
+        return ptype
+
+
+    def _interpxy(self, arrs, xn, yn, interpm, pointtype):
+        """Interpolate model fields to ship (lon, lat) sample points."""
+        arrs = np.array(arrs)
+
+        if pointtype=='rho':
+            mesh = self._trmesh_rho
+        if pointtype=='u':
+            mesh = self._trmesh_u
+        if pointtype=='v':
+            mesh = self._trmesh_v
+        if pointtype=='psi':
+            mesh = self._trmesh_psi
+
+        if arrs.size==0:
+            arrs = np.array([arrs]) # Array has to be at least 1D to iterate.
+
+        intarr = []
+        for arr in arrs:
+            intarr.append(mesh.interp(xn, yn, arr, order=interpm)[0])
+
+        return np.array(intarr)
+
+
+    def _interpt(self, arrs, ti):
+        """Interpolate model fields to a given ship sample time."""
+        arrs = np.array(arrs)
+
+        # Make sure indices are increasing and not repeated.
+        idl, idr = np.sort(near(self.troms, ti, npts=2, return_index=True))
+        if idl==idr: idr+=1
+        tli, tri = self.roms_time[idl], self.roms_time[idr]
+        dti = (self.ship_time - tli)/(tri - tli)
+
+        if arrs.size==0:
+            arrs = np.array([arrs]) # Array has to be at least 1D to iterate.
+
+        intarr = []
+        for arr in arrs:
+            arr_tl = arr[idl, :]
+            arr_tr = arr[idr, :]
+            z_tl = self.zr[idl, :]
+            z_tr = self.zr[idr, :]
+            intarr.append(arr_tl + (arr_tr - arr_tl)*dti) # Linearly interpolate in time.
+
+        return np.array(intarr)
+
+
+    def _interpsynop(self, arrs, ti, xn, yn, interpm, pointtype):
+        """Interpolate model fields to a ship track pretending it was instantaneous."""
+        intarr_synop = _interpxy(arrslr, xn, yn, interpm, pointtype)
+        intarr_synop = _interpt(intarr_synop, arrs)
+
+        return np.array(intarr)
 
 
     def plt_trkmap(self):
@@ -127,10 +215,9 @@ class RomsShipSimulator(object):
         # Set up spherical Delaunay mesh to horizontally
         # interpolate the wanted variable in
         # the previous and next time steps.
-        pointtype = _get_pointtype(varname)
+        pointtype = self._get_pointtype(varname)
         ptt = pointtype[0]
-        from stripack import trmesh
-        import pickle
+
         stail = '.ravel(), order=interpm)[0]'
         trmeshs = "self._trmesh_%s"%pointtype
         if not hasattr(self, '_trmesh_%s'%pointtype):
@@ -138,14 +225,15 @@ class RomsShipSimulator(object):
             if cache:
                 if isfile(pklname): # Load from cache if it exists.
                     cmd = "%s = pickle.load(open(pklname, 'rb'))"%trmeshs
-                    exec(cmd, locals())
+                    loc_pickle = dict(pickle=globals()['pickle'])
+                    exec(cmd, loc_pickle, locals())
                 else: # Create cache if it does not exist.
                     if verbose:
                         print('Setting up Delaunay mesh for %s points.'%pointtype.upper())
                     cmd = "%s = trmesh(self.lon%s.ravel()*deg2rad, self.lat%s.ravel()*deg2rad)"%(trmeshs, ptt, ptt)
                     exec(cmd, locals())
                     cmd = "pickle.dump(%s, open(pklname, 'wb'))"%trmeshs
-                    exec(cmd, locals())
+                    exec(cmd, globals())
             else:
                 cmd = "%s = trmesh(self.lon%s.ravel()*deg2rad, self.lat%s.ravel()*deg2rad)"%(trmeshs, ptt, ptt)
                 exec(cmd, locals())
@@ -155,7 +243,7 @@ class RomsShipSimulator(object):
         idxtl, idxtr = [], []
         for t0 in self.tship.tolist():
             idl, idr = np.sort(near(self.troms, t0, npts=2, return_index=True)) # Make sure indices are increasing.
-            if idl==idr; idr+=1 # Make sure indices are not repeated.
+            if idl==idr: idr+=1 # Make sure indices are not repeated.
             self.idxt.append((idl, idr))
             idxtl.append(idl)
             idxtr.append(idr)
@@ -173,17 +261,21 @@ class RomsShipSimulator(object):
         self.dt = (self.ship_time - tl)/(tr - tl) # Store time separations.
         for n in range(self.nshp):
             if verbose:
-                print('Interpolating ship sample %d of %d.'%(n+1, self.nshp))
+                msg = (varname.upper(), str(n+1).zfill(self._ndg), str(self.nshp).zfill(self._ndg))
+                print('Interpolating ship-sampled %s (%s of %s).'%msg)
+            # Step 1: Find the time steps bounding the wanted time.
             var_tl = vroms[idxtl[n],:]
             var_tr = vroms[idxtr[n],:]
             z_tl = self.zr[idxtl[n],:]
             z_tr = self.zr[idxtr[n],:]
             xn, yn = xship_rad[n], yship_rad[n]
             tn, dtn = self.ship_time[n], self.dt[n]
-            xn = np.array([xn, xn]) # Acoxambration to avoid trmesh error.
-            yn = np.array([yn, yn]) # Acoxambration to avoid trmesh error.
-            # Horizontally interpolate the wanted variable
-            # on each pair of bounding time steps.
+            xn = np.array([xn, xn]) # Acoxambration (workaround) to avoid trmesh error.
+            yn = np.array([yn, yn]) # Acoxambration (workaround) to avoid trmesh error.
+            # Step 2: Horizontally interpolate the wanted variable
+            # on each pair of bounding time steps and
+            # Step 3: Interpolate the 2 time steps to the wanted
+            # time in between them.
             if vroms.ndim==4:
                 for nz in range(self.N):
                     vartup = (var_tl[nz,:].ravel(), var_tr[nz,:].ravel(), z_tl[nz,:].ravel(), z_tr[nz,:].ravel())
@@ -221,94 +313,3 @@ class RomsShipSimulator(object):
         if vroms.ndim==3:
             t_vship = self.tship
             return vship, t_vship
-
-
-def _burst(arr):
-    """
-    Convert an array of lists of objects
-    into a 1D array of objects.
-    """
-    wrk = np.array([])
-    for n in range(arr.size):
-        wrk = np.concatenate((wrk, np.array(arr[n])))
-
-    return wrk
-
-
-def _get_pointtype(self, vname):
-    """
-    Given a ROMS variable name, returns
-    the type of the grid point where it
-    is located, either RHO, U, V or PSI.
-    """
-    vcoords = self.varsdict[vname].coordinates
-    if 'lon_rho' in vcoords:
-        ptype = 'rho'
-    if 'lon_u' in vcoords:
-        ptype = 'u'
-    if 'lon_v' in vcoords:
-        ptype = 'v'
-    if 'lon_psi' in vcoords:
-        ptype = 'psi'
-
-    return ptype
-
-
-def _interpxy(self, arrs, xn, yn, interpm, pointtype):
-    """Interpolate model fields to ship (lon, lat) sample points."""
-    if pointtype=='rho':
-        mesh = self._trmesh_rho
-    if pointtype=='u':
-        mesh = self._trmesh_u
-    if pointtype=='v':
-        mesh = self._trmesh_v
-    if pointtype=='psi':
-        mesh = self._trmesh_psi
-
-    try:
-        _ = len(arrs)
-    except TypeError
-        arrs = [arrs]
-
-    intarr = []
-    for arr in arrs:
-        intarr.append(mesh.interp(xn, yn, arr, order=interpm)[0])
-
-    return np.array(intarr)
-
-
-def _interpt(self, ti, arrs):
-    """Interpolate model fields to a given ship sample time."""
-    # Make sure indices are increasing and not repeated.
-    idl, idr = np.sort(near(self.troms, ti, npts=2, return_index=True))
-    if idl==idr; idr+=1
-    tli, tri = self.roms_time[idl], self.roms_time[idr]
-    dti = (self.ship_time - tli)/(tri - tli)
-
-    try:
-        _ = len(arrs)
-    except TypeError
-        arrs = [arrs]
-
-    intarr = []
-    for arr in arrs:
-        arr_tl = arr[idl, :]
-        arr_tr = arr[idr, :]
-        z_tl = self.zr[idl, :]
-        z_tr = self.zr[idr, :]
-        intarr.append(arr_tl + (arr_tr - arr_tl)*dti) # Linearly interpolate in time.
-
-    return np.array(intarr)
-
-
-def _interpsynop(self, arrs, xn, yn, interpm, pointtype):
-    """Interpolate model fields to a ship track pretending it was instantaneous."""
-    var = self.varsdict[varname]
-    # find closest times.
-    ftl, ftr = self.idxtr
-
-    arrslr = (var[ftl,:], var[ftr,:])
-    intarr_synop = self._interpxy(arrslr, xn, yn, interpm, pointtype)
-    intarr_synop = self._interpt(intarr_synop)
-
-    return np.array(intarr)
