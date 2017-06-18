@@ -60,6 +60,16 @@ class RomsShip(object):
         self.zeta = self.varsdict['zeta']
         self.Vtrans = self.varsdict['Vtransform'][:]
         self.zr = z_r(self.h, self.hc, self.N, self.s_rho, self.Cs_r, self.zeta, self.Vtrans)
+        # Get vertical grid at interior u, v and psi points.
+        hu = 0.5*(self.h[:,1:] + self.h[:,:-1])
+        hv = 0.5*(self.h[1:,:] + self.h[:-1,:])
+        hp = 0.5*(hv[:,1:] + hv[:,:-1])
+        zetau = 0.5*(self.zeta[:,:,1:] + self.zeta[:,:,:-1])
+        zetav = 0.5*(self.zeta[:,1:,:] + self.zeta[:,:-1,:])
+        zetap = 0.5*(zetav[:,:,1:] + zetav[:,:,:-1])
+        self.zu = z_r(hu, self.hc, self.N, self.s_rho, self.Cs_r, zetau, self.Vtrans)
+        self.zv = z_r(hv, self.hc, self.N, self.s_rho, self.Cs_r, zetav, self.Vtrans)
+        self.zp = z_r(hp, self.hc, self.N, self.s_rho, self.Cs_r, zetap, self.Vtrans)
 
 
     def _burst(self, arr):
@@ -90,7 +100,7 @@ class RomsShip(object):
             ptype = 'v'
         if 'lon_psi' in vcoords:
             ptype = 'psi'
-        print(ptype)
+
         return ptype
 
 
@@ -129,7 +139,6 @@ class RomsShip(object):
 
         intarr = []
         for arr in arrs:
-            print(xn.size,yn.size,arr.shape,arr.size,mesh.npts)
             intarr.append(mesh.interp(xn, yn, arr, order=interpm)[0])
 
         return np.array(intarr)
@@ -137,8 +146,6 @@ class RomsShip(object):
 
     def _interpt(self, arrs, ti, pointtype):
         """Interpolate model fields to a given ship sample time."""
-        arrs = np.array(arrs)
-
         # Make sure indices are increasing and not repeated.
         idl, idr = np.sort(near(self.troms, ti, npts=2, return_index=True))
         if idl==idr:
@@ -149,6 +156,8 @@ class RomsShip(object):
 
         if arrs.size==0:
             arrs = np.array([arrs]) # Array has to be at least 1D to iterate.
+        else:
+            arrs = np.array(arrs)
 
         z_tl = self._get_vgridi(idl, pointtype)
         z_tr = self._get_vgridi(idr, pointtype)
@@ -164,8 +173,15 @@ class RomsShip(object):
 
     def _interpsynop(self, arrs, ti, xn, yn, interpm, pointtype):
         """Interpolate model fields to a ship track pretending it was instantaneous."""
-        intarr_synop = _interpxy(arrslr, xn, yn, interpm, pointtype)
-        intarr_synop = _interpt(intarr_synop, arrs)
+        if arrs.size==0:
+            arrs = np.array([arrs]) # Array has to be at least 1D to iterate.
+        else:
+            arrs = np.array(arrs)
+
+        intarr_synop = []
+        for arr in arrs:
+            intarr_synop = _interpxy(arrslr, xn, yn, interpm, pointtype)
+            intarr_synop = _interpt(intarr_synop, arrs)
 
         return np.array(intarr)
 
@@ -251,14 +267,12 @@ class RomsShip(object):
                 else: # Create cache if it does not exist.
                     if verbose:
                         print('Setting up Delaunay mesh for %s points.'%pointtype.upper())
-                    # print(meshs, ptt)
                     cmd = "%s = trmesh(self.lon%s.ravel()*deg2rad, self.lat%s.ravel()*deg2rad)"%(trmeshs, ptt, ptt)
                     exec(cmd, loc_trmesh, locals())
                     cmd = "pickle.dump(%s, open(pklname, 'wb'))"%trmeshs
                     exec(cmd, loc_pickle, locals())
             else:
                 cmd = "%s = trmesh(self.lon%s.ravel()*deg2rad, self.lat%s.ravel()*deg2rad)"%(trmeshs, ptt, ptt)
-                print(self.lonv.shape,self.latv.shape,ptt)
                 exec(cmd, loc_trmesh, locals())
 
         # Store indices of adjacent time steps for each sample time.
@@ -290,8 +304,8 @@ class RomsShip(object):
             var_tl = vroms[idxtl[n],:]
             var_tr = vroms[idxtr[n],:]
 
-            z_tl = _get_vgridi(idxtl[n], pointtype)
-            z_tr = _get_vgridi(idxtr[n], pointtype)
+            z_tl = self._get_vgridi(idxtl[n], pointtype)
+            z_tr = self._get_vgridi(idxtr[n], pointtype)
             xn, yn = xship_rad[n], yship_rad[n]
             tn, dtn = self.ship_time[n], self.dt[n]
             xn = np.array([xn, xn]) # Acoxambration (workaround) to avoid trmesh error.
@@ -303,20 +317,15 @@ class RomsShip(object):
             if vroms.ndim==4:
                 for nz in range(self.N):
                     vartup = (var_tl[nz,:].ravel(), var_tr[nz,:].ravel(), z_tl[nz,:].ravel(), z_tr[nz,:].ravel())
-                    print(var_tl.shape, var_tr.shape, z_tl.shape, z_tr.shape)
                     wrkl, wrkr, z_wrkl, z_wrkr = self._interpxy(vartup, xn, yn, interpm, pointtype)
                     vship[nz, n] = wrkl + (wrkr - wrkl)*dtn # Linearly interpolate in time.
                     z_vship[nz, n] = z_wrkl + (z_wrkr - z_wrkl)*dtn
             elif vroms.ndim==3:
                 vartup = (var_tl.ravel(), var_tr.ravel())
-                print(var_tl.shape, var_tr.shape)
-                # wrkl, wrkr = self.
-
-                print(vartup, xn, yn, interpm, pointtype)
+                wrkl, wrkr = self._interpxy(vartup, xn, yn, interpm, pointtype)
                 vship[n] = wrkl + (wrkr - wrkl)*dtn
             else:
                 raise NotImplementedError('Not implemented yet, sorry...')
-            print(vartup, xn, yn, interpm, pointtype)
 
         # Convert to xarray.
         # coordd = {'lat':(['latitude','longitude'], y), 'lon':(['latitude','longitude'], x)}
