@@ -38,7 +38,7 @@ class RomsShip(object):
         self.xship = np.array([xy.lon for xy in xyship])
         self.yship = np.array([xy.lat for xy in xyship])
         self.nshp = self.tship.size
-        self._ndg = len(str(self.nshp))
+        self._ndig = len(str(self.nshp))
         self._deg2rad = np.pi/180 # [rad/deg].
         # Store roms grid (x, y, z, t) coordinates.
         self.filename = roms_fname
@@ -179,27 +179,6 @@ class RomsShip(object):
         return np.array(intarr)
 
 
-    def _interpsynop(self, arrs, ti, xn, yn, interpm, pointtype):
-        """Interpolate model fields to a ship track pretending it was instantaneous."""
-        arrs = np.array(arrs)
-        idl, idr = np.sort(near(self.troms, ti, npts=2, return_index=True))
-        if idl==idr:
-            idr+=1
-
-        if arrs.size==0:
-            arrs = np.array([arrs]) # Array has to be at least 1D to iterate.
-        else:
-            arrs = np.array(arrs)
-
-        intarr_synop = []
-        for arr in arrs:
-            arrlr = [arr[idl, :], arr[idr, :]]
-            intarr_t = self._interpxy(arrlr, xn, yn, interpm, pointtype)
-            intarr_synop.append(self._interpt(intarr_t, ti, pointtype))
-
-        return np.array(intarr_synop)
-
-
     def plt_trkmap(self):
         """
         Plot topography map with the ship track.
@@ -228,7 +207,7 @@ class RomsShip(object):
 
     def chk_synopticity(self, xn, yn, time, arr, varname, figsize=(16,8)):
         """
-        Compare a ship-sampled transect of model output
+        Plot a comparison between a ship-sampled transect of model output
         with the instantaneous (synoptic) model transect.
 
         # TODO: Plot vertical lines at the times where there is model output.
@@ -304,13 +283,13 @@ class RomsShip(object):
         self.idxt = []
         idxtl, idxtr = [], []
 
-        if synop: # Sample synoptically (each ship line is sampled instantaneously).
-            waypts_idxs = np.where(self.iswaypt)[0]
-            waypts_idxsl, waypts_idxsr = waypts_idxs[:-1], waypts_idxs[1:]
-            _ = [(idxl, idxr) for idxl, idxr in zip(waypts_idxsl, waypts_idxsr)]
-            for sec_idx in sec_idxs:
-                tsecl, tsecr = sec_idx
-                self.tship[tsecl:tsecr] = self.tship[tsecl]
+        if synop: # Sample synoptically (instantaneous ship lines).
+            waypts_idxs = np.where(self.iswaypt)[0].tolist()
+            waypts_idxs.reverse()
+            while len(waypts_idxs)>0:
+                fsecl, fsecr = waypts_idxs.pop(), waypts_idxs.pop()
+                self.tship[fsecl:fsecr+1] = self.tship[fsecl]
+                self.ship_time[fsecl:fsecr+1] = self.ship_time[fsecl]
 
         for t0 in self.tship.tolist():
             idl, idr = np.sort(near(self.troms, t0, npts=2, return_index=True)) # Make sure indices are increasing.
@@ -329,10 +308,10 @@ class RomsShip(object):
             raise NotImplementedError('Not implemented yet, sorry...')
 
         tl, tr = self.roms_time[idxtl], self.roms_time[idxtr]
-        self.dt = (self.ship_time - tl)/(tr - tl) # Store time separations.
+        self.dt = np.abs(self.ship_time - tl)/(tr - tl) # Store time separations.
         for n in range(self.nshp):
             if verbose:
-                msg = (varname.upper(), str(n+1).zfill(self._ndg), str(self.nshp).zfill(self._ndg))
+                msg = (varname.upper(), str(n+1).zfill(self._ndig), str(self.nshp).zfill(self._ndig))
                 print('Interpolating ship-sampled %s (%s of %s).'%msg)
             # Step 1: Find the time steps bounding the wanted time.
             var_tl = vroms[idxtl[n],:]
