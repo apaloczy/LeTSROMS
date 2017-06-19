@@ -26,14 +26,18 @@ class RomsShip(object):
     a ship track.
     """
     def __init__(self, roms_fname, xyship, tship):
-        # Load track coordinates (x, y, t).
         assert xyship.size==tship.size, "(x,y,t) coordinates do not have the same size."
+        iswaypt = [] # Flag the first and last points of a segment.
+        for ntrki in tship:
+            iswpti = len(ntrki)*[0]
+            iswpti[0], iswpti[-1] = 1, 1
+            iswaypt.append(iswpti)
+        self.iswaypt = np.bool8(self._burst(iswaypt))
         xyship = self._burst(xyship)
-        tship = self._burst(tship)
+        self.tship = self._burst(tship)
         self.xship = np.array([xy.lon for xy in xyship])
         self.yship = np.array([xy.lat for xy in xyship])
-        self.tship = tship
-        self.nshp = tship.size
+        self.nshp = self.tship.size
         self._ndg = len(str(self.nshp))
         self._deg2rad = np.pi/180 # [rad/deg].
         # Store roms grid (x, y, z, t) coordinates.
@@ -214,7 +218,7 @@ class RomsShip(object):
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
         ax.plot(self.xship, self.yship, ship_days)
-        # ax.plot(self.xship[self.fwaypts], self.yship[self.fwaypts], ship_days[self.fwaypts], marker='o', ms=4)
+        ax.plot(self.xship[self.iswaypt], self.yship[self.iswaypt], ship_days[self.iswaypt], marker='o', ms=6)
         ax.set_xlabel('Ship longitude [degrees east]', fontsize=15, fontweight='black')
         ax.set_ylabel('Ship latitude [degrees north]', fontsize=15, fontweight='black')
         ax.set_zlabel('Ship time [cruise days]', fontsize=15, fontweight='black')
@@ -301,7 +305,7 @@ class RomsShip(object):
         idxtl, idxtr = [], []
 
         if synop: # Sample synoptically (each ship line is sampled instantaneously).
-            waypts_idxs = np.where(self.fwaypts)[0]
+            waypts_idxs = np.where(self.iswaypt)[0]
             waypts_idxsl, waypts_idxsr = waypts_idxs[:-1], waypts_idxs[1:]
             _ = [(idxl, idxr) for idxl, idxr in zip(waypts_idxsl, waypts_idxsr)]
             for sec_idx in sec_idxs:

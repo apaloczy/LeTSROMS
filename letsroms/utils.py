@@ -41,7 +41,9 @@ def mk_shiptrack(waypts, tstart, sampfreq, shipspd=4, evenspacing=False, closedt
     OUTPUT
     ------
     trkpts:      Array of lists of pygeodesy.sphericalNvector.LatLon
-                 objects containing the (lon, lat) of each ship sample point along the track. Each list is a segment of the track, and each LatLon is a ship sample point.
+                 objects containing the (lon, lat) of each ship sample point along the track.
+                 Each list is a segment of the track containing LatLon objects associated
+                 with each ship sample point.
     trktimes:    Array of lists of datetime objects containing the
                  times of each ship sample point.
 
@@ -77,7 +79,7 @@ def mk_shiptrack(waypts, tstart, sampfreq, shipspd=4, evenspacing=False, closedt
             if nn==-1:
                 raise ShipTrackError('Segment from %s to %s is not long enough to accomodate any ship sampling points.'%(wptA.toStr(), wptB.toStr()))
             if verbose:
-                print("Segment %d/%d:  %s --> %s (%.3f km | %s h)"%(n+1, nsegs, wptA.toStr(), wptB.toStr(), dAB*1e-3, tAB/3600))
+                print("Segment %d/%d:  %s --> %s (%.3f km | %.2f h)"%(n+1, nsegs, wptA.toStr(), wptB.toStr(), dAB*1e-3, tAB/3600))
             trkptsi = [wptA.intermediateTo(wptB, dfrac*ni) for ni in range(nn)]
             trktimesi = [trktimesi + timedelta(sampdt*ni/86400) for ni in range(nn)]
             # Fix actual start time of next segment by accounting for the
