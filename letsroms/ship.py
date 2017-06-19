@@ -4,6 +4,7 @@
 
 import numpy as np
 from matplotlib import pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from datetime import datetime, timedelta
 import xarray as xr
 from netCDF4 import Dataset, num2date, date2num
@@ -34,6 +35,7 @@ class RomsShip(object):
         self.tship = tship
         self.nshp = tship.size
         self._ndg = len(str(self.nshp))
+        self._deg2rad = np.pi/180 # [rad/deg].
         # Store roms grid (x, y, z, t) coordinates.
         self.filename = roms_fname
         self.nc = Dataset(self.filename)
@@ -124,6 +126,10 @@ class RomsShip(object):
     def _interpxy(self, arrs, xn, yn, interpm, pointtype):
         """Interpolate model fields to ship (lon, lat) sample points."""
         arrs = np.array(arrs)
+        if arrs.size==0:
+            arrs = np.array([arrs]) # Array has to be at least 1D to iterate.
+        else:
+            arrs = np.array(arrs)
 
         if pointtype=='rho':
             mesh = self._trmesh_rho
@@ -134,9 +140,6 @@ class RomsShip(object):
         if pointtype=='psi':
             mesh = self._trmesh_psi
 
-        if arrs.size==0:
-            arrs = np.array([arrs]) # Array has to be at least 1D to iterate.
-
         intarr = []
         for arr in arrs:
             intarr.append(mesh.interp(xn, yn, arr, order=interpm)[0])
@@ -146,6 +149,7 @@ class RomsShip(object):
 
     def _interpt(self, arrs, ti, pointtype):
         """Interpolate model fields to a given ship sample time."""
+        arrs = np.array(arrs)
         # Make sure indices are increasing and not repeated.
         idl, idr = np.sort(near(self.troms, ti, npts=2, return_index=True))
         if idl==idr:
@@ -173,6 +177,11 @@ class RomsShip(object):
 
     def _interpsynop(self, arrs, ti, xn, yn, interpm, pointtype):
         """Interpolate model fields to a ship track pretending it was instantaneous."""
+        arrs = np.array(arrs)
+        idl, idr = np.sort(near(self.troms, ti, npts=2, return_index=True))
+        if idl==idr:
+            idr+=1
+
         if arrs.size==0:
             arrs = np.array([arrs]) # Array has to be at least 1D to iterate.
         else:
@@ -180,10 +189,11 @@ class RomsShip(object):
 
         intarr_synop = []
         for arr in arrs:
-            intarr_synop = _interpxy(arrslr, xn, yn, interpm, pointtype)
-            intarr_synop = _interpt(intarr_synop, arrs)
+            arrlr = [arr[idl, :], arr[idr, :]]
+            intarr_t = self._interpxy(arrlr, xn, yn, interpm, pointtype)
+            intarr_synop.append(self._interpt(intarr_t, ti, pointtype))
 
-        return np.array(intarr)
+        return np.array(intarr_synop)
 
 
     def plt_trkmap(self):
@@ -194,11 +204,21 @@ class RomsShip(object):
         return fig, ax
 
 
-    def plt_trkxyt(self):
+    def plt_trkxyt(self, **kw):
         """
         Plot the ship track as a 3D line (x, y, t).
+
+        All keyword arguments are passed to the 3D plot.
         """
-        fig, ax = plt.subplots()
+        ship_days = (self.ship_time - self.ship_time[0])/86400.
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.plot(self.xship, self.yship, ship_days)
+        # ax.plot(self.xship[self.fwaypts], self.yship[self.fwaypts], ship_days[self.fwaypts], marker='o', ms=4)
+        ax.set_xlabel('Ship longitude [degrees east]', fontsize=15, fontweight='black')
+        ax.set_ylabel('Ship latitude [degrees north]', fontsize=15, fontweight='black')
+        ax.set_zlabel('Ship time [cruise days]', fontsize=15, fontweight='black')
+
         return fig, ax
 
 
@@ -226,16 +246,18 @@ class RomsShip(object):
             ax1, ax2 = ax
             fts = 1
             # Get the instantaneous line at the time the ship starts the line.
+            self._interpsynop(self, arrs, ti, xn, yn, interpm, pointtype)
 
             ax1.plot(troms, romsarr, 'b-', marker='o')
             ax1.axis('tight')
             ax1.set_ylabel('Variable [var units]')
             ax = (ax1, ax2)
         plt.show()
+
         return fig, ax
 
 
-    def ship_sample(self, varname, interp_method='linear', cache=False, verbose=True):
+    def ship_sample(self, varname, interp_method='linear', synop=False, cache=False, verbose=True):
         """
         Interpolate model 'varname'
         to ship track coordinates (x, y, t).
@@ -243,10 +265,9 @@ class RomsShip(object):
         'interp_method' must be 'nearest',
         'linear' or 'cubic'.
         """
-        deg2rad = np.pi/180 # [rad/deg].
         interpm = dict(nearest=0, linear=1, cubic=3)
         interpm = interpm[interp_method]
-        xship_rad, yship_rad = self.xship*deg2rad, self.yship*deg2rad
+        xship_rad, yship_rad = self.xship*self._deg2rad, self.yship*self._deg2rad
         # Set up spherical Delaunay mesh to horizontally
         # interpolate the wanted variable in
         # the previous and next time steps.
@@ -267,17 +288,26 @@ class RomsShip(object):
                 else: # Create cache if it does not exist.
                     if verbose:
                         print('Setting up Delaunay mesh for %s points.'%pointtype.upper())
-                    cmd = "%s = trmesh(self.lon%s.ravel()*deg2rad, self.lat%s.ravel()*deg2rad)"%(trmeshs, ptt, ptt)
+                    cmd = "%s = trmesh(self.lon%s.ravel()*self._deg2rad, self.lat%s.ravel()*self._deg2rad)"%(trmeshs, ptt, ptt)
                     exec(cmd, loc_trmesh, locals())
                     cmd = "pickle.dump(%s, open(pklname, 'wb'))"%trmeshs
                     exec(cmd, loc_pickle, locals())
             else:
-                cmd = "%s = trmesh(self.lon%s.ravel()*deg2rad, self.lat%s.ravel()*deg2rad)"%(trmeshs, ptt, ptt)
+                cmd = "%s = trmesh(self.lon%s.ravel()*self._deg2rad, self.lat%s.ravel()*self._deg2rad)"%(trmeshs, ptt, ptt)
                 exec(cmd, loc_trmesh, locals())
 
-        # Store indices of adjacent time steps for each sample time.
+        # Store indices of adjacent model time steps for the time of each sample.
         self.idxt = []
         idxtl, idxtr = [], []
+
+        if synop: # Sample synoptically (each ship line is sampled instantaneously).
+            waypts_idxs = np.where(self.fwaypts)[0]
+            waypts_idxsl, waypts_idxsr = waypts_idxs[:-1], waypts_idxs[1:]
+            _ = [(idxl, idxr) for idxl, idxr in zip(waypts_idxsl, waypts_idxsr)]
+            for sec_idx in sec_idxs:
+                tsecl, tsecr = sec_idx
+                self.tship[tsecl:tsecr] = self.tship[tsecl]
+
         for t0 in self.tship.tolist():
             idl, idr = np.sort(near(self.troms, t0, npts=2, return_index=True)) # Make sure indices are increasing.
             if idl==idr: idr+=1 # Make sure indices are not repeated.
@@ -314,13 +344,13 @@ class RomsShip(object):
             # on each pair of bounding time steps and
             # Step 3: Interpolate the 2 time steps to the wanted
             # time in between them.
-            if vroms.ndim==4:
+            if vroms.ndim==4: # 3D variables.
                 for nz in range(self.N):
                     vartup = (var_tl[nz,:].ravel(), var_tr[nz,:].ravel(), z_tl[nz,:].ravel(), z_tr[nz,:].ravel())
                     wrkl, wrkr, z_wrkl, z_wrkr = self._interpxy(vartup, xn, yn, interpm, pointtype)
                     vship[nz, n] = wrkl + (wrkr - wrkl)*dtn # Linearly interpolate in time.
                     z_vship[nz, n] = z_wrkl + (z_wrkr - z_wrkl)*dtn
-            elif vroms.ndim==3:
+            elif vroms.ndim==3: # 2D variables.
                 vartup = (var_tl.ravel(), var_tr.ravel())
                 wrkl, wrkr = self._interpxy(vartup, xn, yn, interpm, pointtype)
                 vship[n] = wrkl + (wrkr - wrkl)*dtn

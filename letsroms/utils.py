@@ -59,13 +59,13 @@ def mk_shiptrack(waypts, tstart, sampfreq, shipspd=4, evenspacing=False, closedt
     sampfreq = sampfreq/3600    # measurements/h to measurements/s.
     sampdt = 1/sampfreq         # Time between adjacent measurements [s].
     dshp = shipspd/sampfreq     # Spatial separation between adjacent measurements [m].
+    nsegs = nwaypts - 1
     trktimesi = tstart
     trktimes = []
     trkpts = []
     for nrep in range(nrepeat):
         if verbose:
             print("Realization %d/%d\n"%(nrep+1, nrepeat))
-        nsegs = nwaypts - 1
         for n in range(nsegs):
             wptA = LatLon(lats[n], lons[n])
             wptB = LatLon(lats[n+1], lons[n+1])
