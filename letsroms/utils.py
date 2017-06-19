@@ -10,6 +10,7 @@ import numpy as np
 from datetime import datetime, timedelta
 from pygeodesy.sphericalNvector import LatLon
 
+
 def mk_shiptrack(waypts, tstart, sampfreq, shipspd=4, evenspacing=False, closedtrk=False, nrepeat=1, verbose=True):
     """
     USAGE
