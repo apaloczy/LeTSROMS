@@ -208,13 +208,17 @@ class RomsShip(object):
         return fig, ax
 
 
-    def ship_sample(self, varname, interp_method='linear', synop=False, cache=False, verbose=True):
+    def ship_sample(self, varname, interp_method='linear', synop=False, linewise_synop=False, cache=False, verbose=True):
         """
         Interpolate model 'varname'
         to ship track coordinates (x, y, t).
 
         'interp_method' must be 'nearest',
         'linear' or 'cubic'.
+
+        If 'linewise_synop' is False (default), EACH OCCUPATION of the sample
+        is synoptic, i.e., each set of consecutive lines that close the sampling
+        pattern. Otherwise, EACH TRANSECT of each occupation is synoptic individually.
         """
         interpm = dict(nearest=0, linear=1, cubic=3)
         interpm = interpm[interp_method]
@@ -250,14 +254,15 @@ class RomsShip(object):
         # Store indices of adjacent model time steps for the time of each sample.
         self.idxt = []
         idxtl, idxtr = [], []
-
-        if synop: # Sample synoptically (instantaneous ship lines).
+        if synop and linewise_synop: # Each TRANSECT of the track is instantaneous.
             waypts_idxs = np.where(self.iswaypt)[0].tolist()
             waypts_idxs.reverse()
             while len(waypts_idxs)>0:
                 fsecl, fsecr = waypts_idxs.pop(), waypts_idxs.pop()
                 self.tship[fsecl:fsecr+1] = self.tship[fsecl]
                 self.ship_time[fsecl:fsecr+1] = self.ship_time[fsecl]
+        elif synop and not linewise_synop: # Each REPETITION of the track is instantaneous.
+            a=1 # TODO
 
         for t0 in self.tship.tolist():
             idl, idr = np.sort(near(self.troms, t0, npts=2, return_index=True)) # Make sure indices are increasing.
