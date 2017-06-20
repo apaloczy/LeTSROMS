@@ -42,16 +42,16 @@ class RomsShip(object):
         self.dship = np.append(0., np.cumsum(distance(self.xship, self.yship)))*1e-3
         self.nshp = self.tship.size
         self._ndig = len(str(self.nshp))
-        self._deg2rad = np.pi/180 # [rad/deg].
-        # Store roms grid (x, y, z, t) coordinates.
-        self.filename = roms_fname
+        self._deg2rad = np.pi/180  # [rad/deg].
+        self.filename = roms_fname # Store roms grid (x, y, z, t).
         self.nc = Dataset(self.filename)
         self.varsdict = self.nc.variables
         self.troms = self.varsdict['ocean_time']
         self.roms_time = self.troms[:] # Time in seconds from start of simulation.
         self.time_units = self.troms.units
-        self.troms = num2date(self.troms[:], units=self.time_units)
-        self.ship_time = date2num(self.tship, units=self.time_units)
+        self.calendar_type = self.troms.calendar
+        self.troms = num2date(self.troms[:], units=self.time_units, calendar=self.calendar_type)
+        self.ship_time = date2num(self.tship, units=self.time_units, calendar=self.calendar_type)
         self.lonr = self.varsdict['lon_rho'][:]
         self.latr = self.varsdict['lat_rho'][:]
         self.lonu = self.varsdict['lon_u'][:]
@@ -255,6 +255,7 @@ class RomsShip(object):
         self.idxt = []
         idxtl, idxtr = [], []
         if synop and linewise_synop: # Each TRANSECT of the track is instantaneous.
+            # print(synop, linewise_synop)
             waypts_idxs = np.where(self.iswaypt)[0].tolist()
             waypts_idxs.reverse()
             while len(waypts_idxs)>0:
@@ -262,7 +263,10 @@ class RomsShip(object):
                 self.tship[fsecl:fsecr+1] = self.tship[fsecl]
                 self.ship_time[fsecl:fsecr+1] = self.ship_time[fsecl]
         elif synop and not linewise_synop: # Each REPETITION of the track is instantaneous.
+            # print(synop, linewise_synop)
             a=1 # TODO
+        else:
+            pass
 
         for t0 in self.tship.tolist():
             idl, idr = np.sort(near(self.troms, t0, npts=2, return_index=True)) # Make sure indices are increasing.
@@ -317,22 +321,28 @@ class RomsShip(object):
                 vship[n] = wrkl + (wrkr - wrkl)*dtn
 
         # Convert interpolated variables to xarray.
-        if vroms.ndim==4:
-            tshp = np.tile(self.tship[np.newaxis,:], (self.N, 1))
+        if vship.ndim==2: # 4D variables (t,z,y,x) become time series of profiles (z,t).
             dshp = np.tile(self.dship[np.newaxis,:], (self.N, 1))
             yshp = np.tile(self.yship[np.newaxis,:], (self.N, 1))
             xshp = np.tile(self.xship[np.newaxis,:], (self.N, 1))
-            coordsd = {'ship_time':(['z', 'time'], tshp),
-                       'ship_depth':(['z', 'time'], self.zship),
+            coordsd = {'time':(['time'], self.tship),
+                       'depth':(['z', 'time'], self.zship),
                        'ship_dist':(['z', 'time'], dshp),
                        'ship_lat':(['z', 'time'], yshp),
                        'ship_lon':(['z', 'time'], xshp)}
             dimsd = {'z':self.N, 'time':self.nshp}
-        elif vroms.ndim==3:
-            coordsd = {'ship_time':(['time'], self.tship),
+        elif vship.ndim==1: # 3D variables (t,y,x) become time series (t).
+            coordsd = {'time':(['time'], self.tship),
                        'ship_dist':(['time'], self.dship),
                        'ship_lat':(['time'], self.yship),
                        'ship_lon':(['time'], self.xship)}
             dimsd = {'time':self.nshp}
 
-        return xr.Dataset({varname:(dimsd, vship)}, coords=coordsd)
+        # Make sure variable units, time units and calendar type are consistent.
+        attrsd = dict(units=self.varsdict[varname].units)
+        Vship = xr.DataArray(vship, coords=coordsd, dims=dimsd,
+                             name=varname.upper(), attrs=attrsd,
+                             encoding=dict(units=self.time_units,
+                             calendar=self.calendar_type))
+
+        return Vship

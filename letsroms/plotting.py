@@ -22,7 +22,7 @@ def chk_synopticity(varship, varsynop, nclevs=50):
     assert varship.ndim==varsynop.ndim, "Synoptic and ship-sampled variables dimensions mismatch."
     x = varship.ship_dist
     if varship.ndim==2:
-        z = varship.ship_depth
+        z = varship.depth
         shipvar = varship.values
         synopvar = varsynop.values
         diffvar = synopvar - shipvar
