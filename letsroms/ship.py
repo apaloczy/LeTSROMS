@@ -267,11 +267,12 @@ class RomsShip(object):
         vroms = self.varsdict[varname]
         if vroms.ndim==4:   # 4D (t, z, y, x) variables, like 'temp'.
             vship = np.empty((self.N, self.nshp))
-            z_vship = np.empty((self.N, self.nshp))
+            zvship = np.empty((self.N, self.nshp))
         elif vroms.ndim==3: # 3D (x, y, t) variables, like 'zeta'.
             vship = np.empty((self.nshp))
         else:
-            raise NotImplementedError('Not implemented yet, sorry...')
+            print("Can only interpolate 3D or 4D variables.")
+            return
 
         tl, tr = self.roms_time[idxtl], self.roms_time[idxtr]
         self.dt = np.abs(self.ship_time - tl)/(tr - tl) # Store time separations.
@@ -295,38 +296,33 @@ class RomsShip(object):
             # time in between them.
             if vroms.ndim==4: # 3D variables.
                 for nz in range(self.N):
-                    vartup = (var_tl[nz,:].ravel(), var_tr[nz,:].ravel(), z_tl[nz,:].ravel(), z_tr[nz,:].ravel())
+                    vartup = (var_tl[nz,:].ravel(),
+                              var_tr[nz,:].ravel(),
+                              z_tl[nz,:].ravel(),
+                              z_tr[nz,:].ravel())
                     wrkl, wrkr, z_wrkl, z_wrkr = self._interpxy(vartup, xn, yn, interpm, pointtype)
                     vship[nz, n] = wrkl + (wrkr - wrkl)*dtn # Linearly interpolate in time.
-                    z_vship[nz, n] = z_wrkl + (z_wrkr - z_wrkl)*dtn
+                    zvship[nz, n] = z_wrkl + (z_wrkr - z_wrkl)*dtn
+                    self.zship = zvship
             elif vroms.ndim==3: # 2D variables.
                 vartup = (var_tl.ravel(), var_tr.ravel())
                 wrkl, wrkr = self._interpxy(vartup, xn, yn, interpm, pointtype)
                 vship[n] = wrkl + (wrkr - wrkl)*dtn
-            else:
-                raise NotImplementedError('Not implemented yet, sorry...')
 
-        # Convert to xarray.
-        # coordd = {'lat':(['latitude','longitude'], y), 'lon':(['latitude','longitude'], x)}
-        # dimsd = {'latitude':ny, 'longitude':nx}
-        # Uii, Vii = Ui[0], Vi[0]
-        # ui = xr.DataArray(Uii, coords=coordd, dims=dimsd)
-        # vi = xr.DataArray(Vii, coords=coordd, dims=dimsd)
-        # vard = dict(U=ui, V=vi)
-        # UVii = xr.Dataset(vard, coords=coordd)
-
-        # t_vship = np.tile(self.tship[np.newaxis,:], (self.N,1))
-
-        # ds = xr.Dataset({'temperature': (['x', 'y', 'time'],  temp),
-        #    ....:                  'precipitation': (['x', 'y', 'time'], precip)},
-        #    ....:                 coords={'lon': (['x', 'y'], lon),
-        #    ....:                         'lat': (['x', 'y'], lat),
-        #    ....:                         'time': pd.date_range('2014-09-06', periods=3),
-        #    ....:                         'reference_time': pd.Timestamp('2014-09-05')})
-
+        # Convert interpolated variables to xarray.
         if vroms.ndim==4:
-            t_vship = np.tile(self.tship[np.newaxis,:], (self.N,1))
-            return vship, t_vship, z_vship
-        if vroms.ndim==3:
-            t_vship = self.tship
-            return vship, t_vship
+            tshp = np.tile(self.tship[np.newaxis,:], (self.N, 1))
+            yshp = np.tile(self.yship[np.newaxis,:], (self.N, 1))
+            xshp = np.tile(self.xship[np.newaxis,:], (self.N, 1))
+            coordsd = {'ship_time':(['z', 'time'], tshp),
+                       'ship_depth':(['z', 'time'], self.zship),
+                       'ship_lat':(['z', 'time'], yshp),
+                       'ship_lon':(['z', 'time'], xshp)}
+            dimsd = {'z':self.N, 'time':self.nshp}
+        elif vroms.ndim==3:
+            coordsd = {'ship_time':(['time'], self.tship),
+                       'ship_lat':(['time'], self.yship),
+                       'ship_lon':(['time'], self.xship)}
+            dimsd = {'time':self.nshp}
+
+        return xr.Dataset({varname:(dimsd, vship)}, coords=coordsd)
