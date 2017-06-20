@@ -7,6 +7,7 @@ Sample ROMS model output like a ship/aircraft/drifter would. A helpful tool to p
 + numpy
 + matplotlib
 + netCDF4
++ gsw
 + xarray
 + stripack
 + pyroms

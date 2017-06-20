@@ -4,6 +4,7 @@
 
 import numpy as np
 from matplotlib import pyplot as plt
+from gsw import distance
 from mpl_toolkits.mplot3d import Axes3D
 from datetime import datetime, timedelta
 import xarray as xr
@@ -38,6 +39,7 @@ class RomsShip(object):
         self.tship = self._burst(tship)
         self.xship = np.array([xy.lon for xy in xyship])
         self.yship = np.array([xy.lat for xy in xyship])
+        self.dship = np.append(0., np.cumsum(distance(self.xship, self.yship)))*1e-3
         self.nshp = self.tship.size
         self._ndig = len(str(self.nshp))
         self._deg2rad = np.pi/180 # [rad/deg].
@@ -312,15 +314,18 @@ class RomsShip(object):
         # Convert interpolated variables to xarray.
         if vroms.ndim==4:
             tshp = np.tile(self.tship[np.newaxis,:], (self.N, 1))
+            dshp = np.tile(self.dship[np.newaxis,:], (self.N, 1))
             yshp = np.tile(self.yship[np.newaxis,:], (self.N, 1))
             xshp = np.tile(self.xship[np.newaxis,:], (self.N, 1))
             coordsd = {'ship_time':(['z', 'time'], tshp),
                        'ship_depth':(['z', 'time'], self.zship),
+                       'ship_dist':(['z', 'time'], dshp),
                        'ship_lat':(['z', 'time'], yshp),
                        'ship_lon':(['z', 'time'], xshp)}
             dimsd = {'z':self.N, 'time':self.nshp}
         elif vroms.ndim==3:
             coordsd = {'ship_time':(['time'], self.tship),
+                       'ship_dist':(['time'], self.dship),
                        'ship_lat':(['time'], self.yship),
                        'ship_lon':(['time'], self.xship)}
             dimsd = {'time':self.nshp}
