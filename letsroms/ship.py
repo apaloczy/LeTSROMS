@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 from gsw import distance
 from mpl_toolkits.mplot3d import Axes3D
 from datetime import datetime, timedelta
+from pandas import to_datetime
 import xarray as xr
 from netCDF4 import Dataset, num2date, date2num
 from ap_tools.utils import near, get_arrdepth
@@ -208,7 +209,7 @@ class RomsShip(object):
         return fig, ax
 
 
-    def ship_sample(self, varname, interp_method='linear', synop=False, linewise_synop=False, cache=False, verbose=True):
+    def ship_sample(self, varname, interp_method='linear', synop=False, linewise_synop=False, cache=False, ret_xarray=True, verbose=True):
         """
         Interpolate model 'varname'
         to ship track coordinates (x, y, t).
@@ -320,29 +321,44 @@ class RomsShip(object):
                 wrkl, wrkr = self._interpxy(vartup, xn, yn, interpm, pointtype)
                 vship[n] = wrkl + (wrkr - wrkl)*dtn
 
-        # Convert interpolated variables to xarray.
-        if vship.ndim==2: # 4D variables (t,z,y,x) become time series of profiles (z,t).
-            dshp = np.tile(self.dship[np.newaxis,:], (self.N, 1))
-            yshp = np.tile(self.yship[np.newaxis,:], (self.N, 1))
-            xshp = np.tile(self.xship[np.newaxis,:], (self.N, 1))
-            coordsd = {'time':(['time'], self.tship),
-                       'depth':(['z', 'time'], self.zship),
-                       'ship_dist':(['z', 'time'], dshp),
-                       'ship_lat':(['z', 'time'], yshp),
-                       'ship_lon':(['z', 'time'], xshp)}
-            dimsd = {'z':self.N, 'time':self.nshp}
-        elif vship.ndim==1: # 3D variables (t,y,x) become time series (t).
-            coordsd = {'time':(['time'], self.tship),
-                       'ship_dist':(['time'], self.dship),
-                       'ship_lat':(['time'], self.yship),
-                       'ship_lon':(['time'], self.xship)}
-            dimsd = {'time':self.nshp}
+        # NOTE: use pandas.to_datetime() to make time axis for xarray.
+        # datetime.datetime() causes bugs in xarray.DataArray for
+        # non-1D variables.
+        if ret_xarray:
+            tship_aux = to_datetime(self.tship)
+            # Convert interpolated variables to xarray.
+            if vship.ndim==2: # 4D variables (t,z,y,x) become time series of profiles (z,t).
+                dimsd = {'z':self.N, 'time':self.nshp}
+                dshp = np.tile(self.dship[np.newaxis,:], (self.N, 1))
+                yshp = np.tile(self.yship[np.newaxis,:], (self.N, 1))
+                xshp = np.tile(self.xship[np.newaxis,:], (self.N, 1))
+                coordsd = {'time':tship_aux,
+                           'depth':(['z', 'time'], self.zship),
+                           'ship_dist':(['z', 'time'], dshp),
+                           'ship_lat':(['z', 'time'], yshp),
+                           'ship_lon':(['z', 'time'], xshp)}
+            elif vship.ndim==1: # 3D variables (t,y,x) become time series (t).
+                dimsd = {'time':self.nshp}
+                coordsd = {'time':tship_aux,
+                           'ship_dist':(['time'], self.dship),
+                           'ship_lat':(['time'], self.yship),
+                           'ship_lon':(['time'], self.xship)}
 
-        # Make sure variable units, time units and calendar type are consistent.
-        attrsd = dict(units=self.varsdict[varname].units)
-        Vship = xr.DataArray(vship, coords=coordsd, dims=dimsd,
-                             name=varname.upper(), attrs=attrsd,
-                             encoding=dict(units=self.time_units,
-                             calendar=self.calendar_type))
+            # Make sure variable units, time units and calendar type are consistent.
+            try:
+                varunits = self.varsdict[varname].units
+            except AttributeError:
+                varunits = 'unitless'
+            attrsd = dict(units=varunits)
+            # NOTE: DO NOT set 'encoding' kw on xr.DataArray. Causes
+            # irreproducible (?) errors with the time coordinate.
+            Vship = xr.DataArray(vship, coords=coordsd, dims=dimsd,
+                                 name=varname.upper(), attrs=attrsd)
+
+        else:
+            if vship.ndim==2:
+                Vship = (self.tship, self.zship, self.dship, self.yship, self.xship, vship)
+            else:
+                Vship = (self.tship, self.dship, self.yship, self.xship, vship)
 
         return Vship
