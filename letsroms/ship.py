@@ -160,8 +160,7 @@ class RomsShip(object):
         arrs = np.array(arrs)
         # Make sure indices are increasing and not repeated.
         idl, idr = np.sort(near(self.troms, ti, npts=2, return_index=True))
-        if idl==idr:
-            idr+=1
+        if idl==idr: idr+=1
 
         tli, tri = self.roms_time[idl], self.roms_time[idr]
         dti = (self.ship_time - tli)/(tri - tli)
@@ -209,7 +208,7 @@ class RomsShip(object):
         return fig, ax
 
 
-    def ship_sample(self, varname, interp_method='linear', synop=False, linewise_synop=False, cache=False, ret_xarray=True, verbose=True):
+    def ship_sample(self, varname, interp_method='linear', synop=False, segwise_synop=False, cache=True, ret_xarray=True, verbose=True):
         """
         Interpolate model 'varname'
         to ship track coordinates (x, y, t).
@@ -217,9 +216,12 @@ class RomsShip(object):
         'interp_method' must be 'nearest',
         'linear' or 'cubic'.
 
-        If 'linewise_synop' is False (default), EACH OCCUPATION of the sample
-        is synoptic, i.e., each set of consecutive lines that close the sampling
-        pattern. Otherwise, EACH TRANSECT of each occupation is synoptic individually.
+        If 'synop' is True (default False), the ship track is sampled
+        instantaneously, depending on the value of 'segwise_synop'.
+
+        If 'segwise_synop' is False (default), EACH OCCUPATION of the sample
+        is synoptic, i.e., each set of consecutive lines that form the ship
+        survey pattern. Otherwise, EACH TRANSECT is synoptic individually.
         """
         interpm = dict(nearest=0, linear=1, cubic=3)
         interpm = interpm[interp_method]
@@ -255,18 +257,25 @@ class RomsShip(object):
         # Store indices of adjacent model time steps for the time of each sample.
         self.idxt = []
         idxtl, idxtr = [], []
-        if synop and linewise_synop: # Each TRANSECT of the track is instantaneous.
-            # print(synop, linewise_synop)
-            waypts_idxs = np.where(self.iswaypt)[0].tolist()
+        if synop:
+            if segwise_synop: # Each TRANSECT of the track is instantaneous.
+                waypts_idxs = np.where(self.iswaypt)[0].tolist()
+            else: # Each OCCUPATION of the track is instantaneous.
+                ndelim = np.logical_and(self.xship==self.xship[0],
+                                        self.yship==self.yship[0])
+                ndelim = np.where(ndelim)[0][:2].ptp() + 1
+                fwaypts = np.where(self.iswaypt)[0]
+                wptdl = np.arange(0, self.nshp+1, ndelim)
+                wptdl[1:] = wptdl[1:] - 1
+                wptdr = wptdl[1:-1] + 1
+                waypts_idxs = np.concatenate((wptdl, wptdr)).tolist()
+            waypts_idxs.sort()
             waypts_idxs.reverse()
             while len(waypts_idxs)>0:
                 fsecl, fsecr = waypts_idxs.pop(), waypts_idxs.pop()
                 self.tship[fsecl:fsecr+1] = self.tship[fsecl]
                 self.ship_time[fsecl:fsecr+1] = self.ship_time[fsecl]
-        elif synop and not linewise_synop: # Each REPETITION of the track is instantaneous.
-            # print(synop, linewise_synop)
-            a=1 # TODO
-        else:
+        else: # Non-synoptic sampling (i.e., ship-like, realistic).
             pass
 
         for t0 in self.tship.tolist():
@@ -291,7 +300,7 @@ class RomsShip(object):
         for n in range(self.nshp):
             if verbose:
                 msg = (varname.upper(), str(n+1).zfill(self._ndig), str(self.nshp).zfill(self._ndig))
-                print('Interpolating ship-sampled %s (%s of %s).'%msg)
+                print('Ship-sampling %s (%s of %s).'%msg)
             # Step 1: Find the time steps bounding the wanted time.
             var_tl = vroms[idxtl[n],:]
             var_tr = vroms[idxtr[n],:]
@@ -352,13 +361,15 @@ class RomsShip(object):
             attrsd = dict(units=varunits)
             # NOTE: DO NOT set 'encoding' kw on xr.DataArray. Causes
             # irreproducible (?) errors with the time coordinate.
-            Vship = xr.DataArray(vship, coords=coordsd, dims=dimsd,
-                                 name=varname.upper(), attrs=attrsd)
-
+            try:
+                Vship = xr.DataArray(vship, coords=coordsd, dims=dimsd,
+                                     name=varname.upper(), attrs=attrsd)
+            except ValueError:
+                print("Error saving variable '%s' to xarray.DataArray. Returning tuple of numpy.ndarray instead."%varname)
+                if vship.ndim==2: Vship = (self.tship, self.zship, self.dship, self.yship, self.xship, vship)
+                elif vship.ndim==1: Vship = (self.tship, self.dship, self.yship, self.xship, vship)
         else:
-            if vship.ndim==2:
-                Vship = (self.tship, self.zship, self.dship, self.yship, self.xship, vship)
-            else:
-                Vship = (self.tship, self.dship, self.yship, self.xship, vship)
+            if vship.ndim==2: Vship = (self.tship, self.zship, self.dship, self.yship, self.xship, vship)
+            elif vship.ndim==1: Vship = (self.tship, self.dship, self.yship, self.xship, vship)
 
         return Vship
