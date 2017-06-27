@@ -365,7 +365,7 @@ class RomsShip(object):
                 Vship = xr.DataArray(vship, coords=coordsd, dims=dimsd,
                                      name=varname.upper(), attrs=attrsd)
             except ValueError:
-                print("Error saving variable '%s' to xarray.DataArray. Returning tuple of numpy.ndarray instead."%varname)
+                print("Error converting variable '%s' to xarray.DataArray. Returning tuple of numpy.ndarray instead."%varname)
                 if vship.ndim==2: Vship = (self.tship, self.zship, self.dship, self.yship, self.xship, vship)
                 elif vship.ndim==1: Vship = (self.tship, self.dship, self.yship, self.xship, vship)
         else:
@@ -373,3 +373,10 @@ class RomsShip(object):
             elif vship.ndim==1: Vship = (self.tship, self.dship, self.yship, self.xship, vship)
 
         return Vship
+
+        def add_noise(self, amp, std=0., type='white'):
+            """
+            Add random noise with amplitude 'amp' and standard deviation
+            'std' (defaults to 0).
+            """
+            a

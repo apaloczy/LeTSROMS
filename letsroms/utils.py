@@ -1,5 +1,5 @@
 # Description: Utilities for working with
-#              the RomsShipSimulator class.
+#              the RomsShip class.
 # Author/date: André Palóczy, May/2017.
 # E-mail:      paloczy@gmail.com
 
@@ -18,7 +18,7 @@ def mk_shiptrack(waypts, tstart, sampfreq, shipspd=4, evenspacing=False, closedt
     mk_shiptrack(waypts, tstart, sampfreq, shipspd=4, evenspacing=False, closedtrk=False, nrepeat=1, verbose=True)
 
     Creates a ship track (longitude, latitude, time)
-    to serve as input to a RomsShipSimulator instance.
+    to serve as input to a RomsShip instance.
 
     INPUT
     -----
@@ -50,6 +50,7 @@ def mk_shiptrack(waypts, tstart, sampfreq, shipspd=4, evenspacing=False, closedt
 
     TODO
     ----
+    Convert to a class 'ShipTrack'.
     Implement 'evenspacing' option.
     """
     lons, lats = map(np.array, (waypts[0], waypts[1]))
