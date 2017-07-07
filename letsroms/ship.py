@@ -15,6 +15,7 @@ from stripack import trmesh
 import pickle
 from os.path import isfile
 from pyroms.vgrid import z_r
+from pygeodesy.utils import wrap180
 from pygeodesy.sphericalNvector import LatLon
 
 __all__ = ['RomsShip',
@@ -32,11 +33,12 @@ class RomsShip(object):
     Class that samples a ROMS *_his of *_avg output file simulating a
     ship track. The input 'ship_track' must be a 'letsroms.ShipTrack' instance.
     """
-    def __init__(self, roms_fname, shiptrack):
-        assert isinstance(shiptrack, ShipTrack), "Input must be a 'letsroms.ship.ShipTrack' instance"
+    def __init__(self, roms_fname, Shiptrack):
+        assert isinstance(Shiptrack, ShipTrack), "Input must be a 'letsroms.ship.ShipTrack' instance"
         iswaypt = [] # Flag the first and last points of a segment.
-        tship = shiptrack.trktimes.data
-        xyship = shiptrack.trkpts.data
+        tship = Shiptrack.trktimes.data
+        xyship = Shiptrack.trkpts.data
+        self.Shiptrack = Shiptrack # Attach the ShipTrack class.
         for ntrki in tship:
             iswpti = len(ntrki)*[0]
             iswpti[0], iswpti[-1] = 1, 1
@@ -371,12 +373,17 @@ class RomsShip(object):
                 Vship = xr.DataArray(vship, coords=coordsd, dims=dimsd,
                                      name=varname.upper(), attrs=attrsd)
             except ValueError:
-                print("Error converting variable '%s' to xarray.DataArray. Returning tuple of numpy.ndarray instead."%varname)
-                if vship.ndim==2: Vship = (self.tship, self.zship, self.dship, self.yship, self.xship, vship)
-                elif vship.ndim==1: Vship = (self.tship, self.dship, self.yship, self.xship, vship)
+                print("Error converting variable '%s' to xarray.DataArray. \
+                       Returning tuple of numpy.ndarray instead."%varname)
+                if vship.ndim==2: Vship = (self.tship, self.zship, self.dship, \
+                                           self.yship, self.xship, vship)
+                elif vship.ndim==1: Vship = (self.tship, self.dship, \
+                                             self.yship, self.xship, vship)
         else:
-            if vship.ndim==2: Vship = (self.tship, self.zship, self.dship, self.yship, self.xship, vship)
-            elif vship.ndim==1: Vship = (self.tship, self.dship, self.yship, self.xship, vship)
+            if vship.ndim==2: Vship = (self.tship, self.zship, self.dship, \
+                                       self.yship, self.xship, vship)
+            elif vship.ndim==1: Vship = (self.tship, self.dship, self.yship, \
+                                         self.xship, vship)
 
         return RomsShipSample(self, Vship)
 
@@ -410,16 +417,16 @@ class RomsShipSample(RomsShip):
             self.name = None
             self.units = None
             if self.ndim==2:
-                self.tship, self.zship, self.dship,
+                self.tship, self.zship, self.dship, \
                 self.yship, self.xship, self.vship = Vship
             elif self.ndim==1:
-                self.tship, self.dship,
+                self.tship, self.dship, \
                 self.yship, self.xship, self.vship = Vship
 
     def add_noise(self, std, mean=0, kind='gaussian', verbose=True):
         """
         Add random noise of type 'kind' with amplitude 'std'
-        and mean 'mean' (defaults to 0).
+        and mean 'mean' (defaults to 0) to the ship-sampled variable.
 
         'kind' can be one of 'gaussian', 'white', 'red'
         or (?), (defaults to 'gaussian').
@@ -437,9 +444,14 @@ class RomsShipSample(RomsShip):
         if hasattr(self, 'Vship'): # If data is a DataArray also add noise to it.
             self.Vship.data = self.Vship.data + noise
         self.vship = self.vship + noise
+        if not hasattr(self, 'noise_properties'):
+            self.noise_properties = dict(kind=kind, amplitude=std, mean=mean)
+        # else:
+        #     self.noise_properties.update(dict) = dict(kind=kind, amplitude=std, mean=mean)
         if verbose:
             msg = "Added %s noise with amplitude %.3f %s and mean %.3f %s \
-                   to variable %s."%(kind, std, self.units, mean, self.units, self.name)
+                   to variable %s."%(kind, std, self.units, mean, self.units, \
+                                     self.name)
             print(msg.strip())
 
 
@@ -533,9 +545,14 @@ class ShipTrack(object):
                 nn = int(1/dfrac) - 1 # Number of points that fit in this
                                       # segment (excluding waypoints A and B).
                 if nn==-1:
-                    raise ShipTrackError('Segment from %s to %s is not long enough to accomodate any ship sampling points.'%(wptA.toStr(), wptB.toStr()))
+                    raise ShipTrackError('Segment from %s to %s is not long \
+                                         enough to accomodate any ship sampling \
+                                         points.'%(wptA.toStr(), wptB.toStr()))
                 if verbose:
-                    print("Segment %d/%d:  %s --> %s (%.3f km | %.2f h)"%(n+1, self.nsegs, wptA.toStr(), wptB.toStr(), dAB*1e-3, tAB/3600))
+                    print("Segment %d/%d:  %s --> %s (%.3f km | %.2f h)"\
+                          %(n+1, self.nsegs, wptA.toStr(), wptB.toStr(), \
+                          dAB*1e-3, tAB/3600))
+
                 trkptsi = [wptA.intermediateTo(wptB, dfrac*ni) for ni in range(nn)]
                 trktimesi = [trktimesi + timedelta(sampdt*ni/86400) for ni in range(nn)]
                 # Fix actual start time of next segment by accounting for the
@@ -545,6 +562,9 @@ class ShipTrack(object):
                 trkptsi.append(wptB)
                 trktimesi.append(endsegtcorr)
                 nptsseg = nn + 1
+
+                # Get headings in TRIG convention (East, North = 0, 90).
+                trkhdgsi = []
                 seg_npoints.append(nptsseg)
                 trkpts.append(trkptsi)
                 trktimes.append(trktimesi)
@@ -552,6 +572,8 @@ class ShipTrack(object):
                 trkptsi = wptB          # Keep last point for next line.
                 seg_lenghts.append(dAB*1e-3)
                 seg_times.append(tAB/3600)
+                # Keep ship headings between each point.
+                print(1)
                 # Keep number of the current occupation as a coordinate.
                 occupation_number = np.append(occupation_number,
                                               np.array([nrepp]*nptsseg))
@@ -579,22 +601,6 @@ class ShipTrack(object):
                                         name='Duration of each track segment')
         self.seg_npoints = xr.DataArray(seg_npoints, coords=seg_coords, dims=seg_dims,
                                         name='Number of points sampled on each track segment')
-
-    def xtrk_flux(self, varname, transp=False, synop=False, segwise_synop=False, **kw):
-        """
-        Calculate the cross-track mean (u_mean*Q_mean) eddy flux (u'*Q') for
-        a variable "Q" sampled from ROMS output. All kwargs are
-        passed to RomsShip.ship_sample().
-
-        The mean is defined as the average of Q over each track line, such that
-        u = u_mean + u' and Q = Q_mean + Q' are the total cross-track velocity
-        and value of Q, respectively.
-
-        if 'transp' is True (defaults to False), then the mean and eddy
-        transports (i.e., the mean and eddy fluxes integrated in the vertical
-        and in the along-track direction) are returned instead of the fluxes.
-        """
-        return 1
 
 
 class ShipTrackError(Exception):
