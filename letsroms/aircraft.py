@@ -17,3 +17,4 @@ class RomsAircraft(object):
     an aircraft track.
     """
     def __init__(self, roms_fname, xyaircraft, taircraft):
+        return 1

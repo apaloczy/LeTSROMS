@@ -9,7 +9,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 
-def chk_synopticity(varship, varsynop, ship_speed, sampling_period, nclevs=50, logscale=False):
+def chk_synopticity(varship, varsynop, ship_speed, sampling_period, contour_levels=50, logscale=False):
     """
     TODO: Add faint vertical lines indicating sampled profiles and
     the separations between occupations.
@@ -19,17 +19,18 @@ def chk_synopticity(varship, varsynop, ship_speed, sampling_period, nclevs=50, l
 
     # TODO: Plot vertical lines at the times where there is model output.
     """
+    isxr = varship.fromDataArray
     assert varship.ndim==varsynop.ndim, "Synoptic and ship-sampled variables dimensions mismatch."
     assert varship.name==varsynop.name, "Synoptic and ship-sampled fields are not the same variable."
     varname = varship.name
     varunits = varship.units
-    x = varship.ship_dist
+    shipvar = varship.vship
+    synopvar = varsynop.vship
+    diffvar = synopvar - shipvar
+    x = varship.dship
     if varship.ndim==2:
         x1 = x[0,:]
-        z = varship.depth
-        shipvar = varship.values
-        synopvar = varsynop.values
-        diffvar = synopvar - shipvar
+        z = varship.zship
         if logscale:
             shipvar = np.log10(shipvar)
             synopvar = np.log10(synopvar)
@@ -41,9 +42,9 @@ def chk_synopticity(varship, varsynop, ship_speed, sampling_period, nclevs=50, l
         diff_lo = - diff_hi
         fig, ax = plt.subplots(nrows=4, sharex=True)
         ax1, ax2, ax3, ax4 = ax
-        cs1 = ax1.contourf(x, z, shipvar, nclevs, shading='flat')
-        cs2 = ax2.contourf(x, z, synopvar, nclevs, shading='flat')
-        cs3 = ax3.contourf(x, z, diffvar, nclevs, vmin=diff_lo, vmax=diff_hi, cmap=plt.cm.seismic, shading='flat')
+        cs1 = ax1.contourf(x, z, shipvar, contour_levels, shading='flat')
+        cs2 = ax2.contourf(x, z, synopvar, contour_levels, shading='flat')
+        cs3 = ax3.contourf(x, z, diffvar, contour_levels, vmin=diff_lo, vmax=diff_hi, cmap=plt.cm.seismic, shading='flat')
         ax4.plot(x1, diffvar_bar, 'k', marker='o', ms=3, label=r'Depth-avg (synop - ship)')
         ax4.axis('tight')
         ax4.grid()
@@ -59,9 +60,6 @@ def chk_synopticity(varship, varsynop, ship_speed, sampling_period, nclevs=50, l
         plt.colorbar(cs3, ax=(ax3, ax4), use_gridspec=True)
         ax = (ax1, ax2, ax3, ax4)
     elif varship.ndim==1:
-        shipvar = varship.values
-        synopvar = varsynop.values
-        diffvar = synopvar - shipvar
         fig, ax = plt.subplots(sharex=True, nrows=2)
         ax1, ax2 = ax
         ax1.plot(x, shipvar, 'grey', marker='o', ms=3, label='ship')

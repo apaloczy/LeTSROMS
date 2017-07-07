@@ -27,14 +27,16 @@ class RomsShip(object):
     """
     USAGE
     -----
-    shiproms = RomsShip(roms_fname, xship, yship, tship, verbose=True)
+    shiproms = RomsShip(roms_fname, ship_track, verbose=True)
 
-    Class that samples a ROMS *_his of *_avg output file simulating
-    a ship track.
+    Class that samples a ROMS *_his of *_avg output file simulating a
+    ship track. The input 'ship_track' must be a 'letsroms.ShipTrack' instance.
     """
-    def __init__(self, roms_fname, xyship, tship):
-        assert xyship.size==tship.size, "(x,y,t) coordinates do not have the same size."
+    def __init__(self, roms_fname, shiptrack):
+        assert isinstance(shiptrack, ShipTrack), "Input must be a 'letsroms.ship.ShipTrack' instance"
         iswaypt = [] # Flag the first and last points of a segment.
+        tship = shiptrack.trktimes.data
+        xyship = shiptrack.trkpts.data
         for ntrki in tship:
             iswpti = len(ntrki)*[0]
             iswpti[0], iswpti[-1] = 1, 1
@@ -376,29 +378,36 @@ class RomsShip(object):
             if vship.ndim==2: Vship = (self.tship, self.zship, self.dship, self.yship, self.xship, vship)
             elif vship.ndim==1: Vship = (self.tship, self.dship, self.yship, self.xship, vship)
 
-        return RomsShipSample(Vship)
+        return RomsShipSample(self, Vship)
 
 
-class RomsShipSample(object):
-    def __init__(self, Vship):
+class RomsShipSample(RomsShip):
+    def __init__(self, Romsship, Vship):
+        self.Romsship = Romsship # Attach parent class.
         if isinstance(Vship, xr.DataArray):
+            self.fromDataArray = True
             self.ndim = Vship.ndim
             if self.ndim==1: # 3D variables (t,y,x) become time series (t).
-                dimsd = {'time':self.nshp}
+                self.dims = {'time':Romsship.nshp}
             elif self.ndim==2:
-                self.zship = coordsd['depth']
-                dimsd = {'z':self.N, 'time':self.nshp}
+                self.zship = Vship.coords['depth']
+                self.dims = {'z':Romsship.N, 'time':Romsship.nshp}
 
-            self.units = attrs['units']
-            self.tship = coordsd['time']
-            self.dship = coordsd['ship_dist']
-            self.yship = coordsd['ship_lat']
-            self.xship = coordsd['ship_lon']
+            if Vship.attrs.__contains__('units') and len(Vship.attrs)>1:
+                self.attrs_vship = Vship.attrs # Attach other attributes if they are present.
+            self.name = Vship.name
+            self.units = Vship.attrs['units']
+            self.tship = Vship.coords['time']
+            self.dship = Vship.coords['ship_dist']
+            self.yship = Vship.coords['ship_lat']
+            self.xship = Vship.coords['ship_lon']
             self.vship = Vship.data
-            self.Vship = Vship # Keep full DataArray as well.
+            self.vship_DataArray = Vship # Keep full DataArray as well.
 
         elif isinstance(Vship, tuple):
+            self.fromDataArray = False
             self.ndim = Vship[-1].ndim
+            self.name = None
             self.units = None
             if self.ndim==2:
                 self.tship, self.zship, self.dship,
@@ -407,15 +416,15 @@ class RomsShipSample(object):
                 self.tship, self.dship,
                 self.yship, self.xship, self.vship = Vship
 
-    def add_noise(self, std, mean=0, kind='normal'):
+    def add_noise(self, std, mean=0, kind='gaussian', verbose=True):
         """
         Add random noise of type 'kind' with amplitude 'std'
         and mean 'mean' (defaults to 0).
 
-        'kind' can be one of 'normal', 'white', 'red'
-        or (?), (defaults to 'normal').
+        'kind' can be one of 'gaussian', 'white', 'red'
+        or (?), (defaults to 'gaussian').
         """
-        if kind=='normal':
+        if kind=='gaussian':
             pdf = np.random.randn
         elif kind=='white':
             pdf = np.random.rand
@@ -428,6 +437,10 @@ class RomsShipSample(object):
         if hasattr(self, 'Vship'): # If data is a DataArray also add noise to it.
             self.Vship.data = self.Vship.data + noise
         self.vship = self.vship + noise
+        if verbose:
+            msg = "Added %s noise with amplitude %.3f %s and mean %.3f %s \
+                   to variable %s."%(kind, std, self.units, mean, self.units, self.name)
+            print(msg.strip())
 
 
 class ShipTrack(object):
