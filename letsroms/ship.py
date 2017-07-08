@@ -15,8 +15,8 @@ from stripack import trmesh
 import pickle
 from os.path import isfile
 from pyroms.vgrid import z_r
-from pygeodesy.utils import wrap180
 from pygeodesy.sphericalNvector import LatLon
+from .utils import compass2trig
 
 __all__ = ['RomsShip',
            'RomsShipSample',
@@ -34,24 +34,30 @@ class RomsShip(object):
     ship track. The input 'ship_track' must be a 'letsroms.ShipTrack' instance.
     """
     def __init__(self, roms_fname, Shiptrack):
-        assert isinstance(Shiptrack, ShipTrack), "Input must be a 'letsroms.ship.ShipTrack' instance"
+        assert isinstance(Shiptrack, ShipTrack), "Input must be a 'ShipTrack' instance"
         iswaypt = [] # Flag the first and last points of a segment.
         tship = Shiptrack.trktimes.data
         xyship = Shiptrack.trkpts.data
+        angship = Shiptrack.trkhdgs.data
         self.Shiptrack = Shiptrack # Attach the ShipTrack class.
         for ntrki in tship:
             iswpti = len(ntrki)*[0]
             iswpti[0], iswpti[-1] = 1, 1
             iswaypt.append(iswpti)
+        self._deg2rad = np.pi/180  # [rad/deg].
+        self._m2km = 1e-3          # [km/m].
         self.iswaypt = np.bool8(self._burst(iswaypt))
         xyship = self._burst(xyship)
         self.tship = self._burst(tship)
         self.xship = np.array([xy.lon for xy in xyship])
         self.yship = np.array([xy.lat for xy in xyship])
-        self.dship = np.append(0., np.cumsum(distance(self.xship, self.yship)))*1e-3
+        self.dship = np.append(0., np.cumsum(distance(self.xship, self.yship)))
+        self.angship = self._burst(angship)
         self.nshp = self.tship.size
         self._ndig = len(str(self.nshp))
-        self._deg2rad = np.pi/180  # [rad/deg].
+        self.dx = self.dship[1:] - self.dship[:-1] # [m].
+        self.dship = self.dship*self._m2km         # [km].
+
         self.filename = roms_fname # Store roms grid (x, y, z, t).
         self.nc = Dataset(self.filename)
         self.varsdict = self.nc.variables
@@ -233,6 +239,7 @@ class RomsShip(object):
         """
         interpm = dict(nearest=0, linear=1, cubic=3)
         interpm = interpm[interp_method]
+        self._interpm = interpm
         xship_rad, yship_rad = self.xship*self._deg2rad, self.yship*self._deg2rad
         # Set up spherical Delaunay mesh to horizontally
         # interpolate the wanted variable in
@@ -300,7 +307,7 @@ class RomsShip(object):
         elif vroms.ndim==3: # 3D (x, y, t) variables, like 'zeta'.
             vship = np.empty((self.nshp))
         else:
-            print("Can only interpolate 3D or 4D variables.")
+            print("Can only interpolate 2D or 3D variables.")
             return
 
         tl, tr = self.roms_time[idxtl], self.roms_time[idxtr]
@@ -332,7 +339,7 @@ class RomsShip(object):
                     wrkl, wrkr, z_wrkl, z_wrkr = self._interpxy(vartup, xn, yn, interpm, pointtype)
                     vship[nz, n] = wrkl + (wrkr - wrkl)*dtn # Linearly interpolate in time.
                     zvship[nz, n] = z_wrkl + (z_wrkr - z_wrkl)*dtn
-                    self.zship = zvship
+                self.zship = zvship
             elif vroms.ndim==3: # 2D variables.
                 vartup = (var_tl.ravel(), var_tr.ravel())
                 wrkl, wrkr = self._interpxy(vartup, xn, yn, interpm, pointtype)
@@ -373,8 +380,7 @@ class RomsShip(object):
                 Vship = xr.DataArray(vship, coords=coordsd, dims=dimsd,
                                      name=varname.upper(), attrs=attrsd)
             except ValueError:
-                print("Error converting variable '%s' to xarray.DataArray. \
-                       Returning tuple of numpy.ndarray instead."%varname)
+                print("Error converting variable '%s' to xarray.DataArray. Returning tuple of numpy.ndarray instead."%varname)
                 if vship.ndim==2: Vship = (self.tship, self.zship, self.dship, \
                                            self.yship, self.xship, vship)
                 elif vship.ndim==1: Vship = (self.tship, self.dship, \
@@ -391,14 +397,16 @@ class RomsShip(object):
 class RomsShipSample(RomsShip):
     def __init__(self, Romsship, Vship):
         self.Romsship = Romsship # Attach parent class.
+        self.dx = Romsship.dx
+        self._interpm = self.Romsship._interpm
+        Romsship.__delattr__('_interpm')
         if isinstance(Vship, xr.DataArray):
-            self.fromDataArray = True
             self.ndim = Vship.ndim
-            if self.ndim==1: # 3D variables (t,y,x) become time series (t).
-                self.dims = {'time':Romsship.nshp}
-            elif self.ndim==2:
+            self.fromDataArray = True
+            if self.ndim==2:
                 self.zship = Vship.coords['depth']
-                self.dims = {'z':Romsship.N, 'time':Romsship.nshp}
+                self.dz = self._strip(self.zship[1:,:] - self.zship[:-1,:])
+                self.dz = 0.5*(self.dz[:,1:] + self.dz[:,:-1]) # [m].
 
             if Vship.attrs.__contains__('units') and len(Vship.attrs)>1:
                 self.attrs_vship = Vship.attrs # Attach other attributes if they are present.
@@ -416,12 +424,23 @@ class RomsShipSample(RomsShip):
             self.ndim = Vship[-1].ndim
             self.name = None
             self.units = None
-            if self.ndim==2:
-                self.tship, self.zship, self.dship, \
-                self.yship, self.xship, self.vship = Vship
-            elif self.ndim==1:
+            if self.ndim==1:
                 self.tship, self.dship, \
                 self.yship, self.xship, self.vship = Vship
+            elif self.ndim==2:
+                self.tship, self.zship, self.dship, \
+                self.yship, self.xship, self.vship = Vship
+
+        if self.ndim==1:
+            self.dims = {'time':Romsship.nshp}
+        elif self.ndim==2:
+            self.dims = {'z':Romsship.N, 'time':Romsship.nshp}
+            self.dz = self._strip(self.zship[1:,:] - self.zship[:-1,:])
+            self.dz = 0.5*(self.dz[:,1:] + self.dz[:,:-1]) # [m].
+            self.dx, self.dz = [np.array(arr) for arr in \
+                                np.broadcast_arrays(self.dx, self.dz)]
+            self.dA = self.dx*self.dz # [m2].
+
 
     def add_noise(self, std, mean=0, kind='gaussian', verbose=True):
         """
@@ -445,15 +464,26 @@ class RomsShipSample(RomsShip):
             self.Vship.data = self.Vship.data + noise
         self.vship = self.vship + noise
         if not hasattr(self, 'noise_properties'):
-            self.noise_properties = dict(kind=kind, amplitude=std, mean=mean)
-        # else:
-        #     self.noise_properties.update(dict) = dict(kind=kind, amplitude=std, mean=mean)
+            self.noise_properties = dict(kind=[kind], amplitude=[std], mean=[mean])
+        else:
+            kind0 = noise_properties['kind']
+            mean0 = noise_properties['mean']
+            std0 = noise_properties['std']
+            kind0.append(kind)
+            mean0.append(mean)
+            std0.append(std)
+            self.noise_properties.update(dict(kind=kind0, amplitude=std0, mean=mean0))
         if verbose:
-            msg = "Added %s noise with amplitude %.3f %s and mean %.3f %s \
-                   to variable %s."%(kind, std, self.units, mean, self.units, \
-                                     self.name)
+            msg = "Added %s noise with amplitude %.3f %s and mean %.3f %s to variable %s."%(kind, std, self.units, mean, self.units, self.name)
             print(msg.strip())
 
+    def _strip(self, obj):
+        if isinstance(obj, xr.DataArray):
+            obj = obj.data
+        else:
+            pass
+
+        return obj
 
 class ShipTrack(object):
     """
@@ -527,15 +557,18 @@ class ShipTrack(object):
         trktimesi = tstart
         trktimes = []
         trkpts = []
+        trkhdgs = []
         seg_lenghts = []
         seg_times = []
         seg_npoints = []
-        occupation_number = np.array([])
+        segment_index = np.array([])
+        occupation_index = np.array([])
         for nrep in range(nrepeat):
             nrepp = nrep + 1
             if verbose:
                 print("Realization %d/%d\n"%(nrepp, nrepeat))
             for n in range(self.nsegs):
+                nsegp = n + 1
                 wptA = LatLon(lats[n], lons[n])
                 wptB = LatLon(lats[n+1], lons[n+1])
                 dAB = wptA.distanceTo(wptB) # length of current segment [m].
@@ -564,37 +597,47 @@ class ShipTrack(object):
                 nptsseg = nn + 1
 
                 # Get headings in TRIG convention (East, North = 0, 90).
-                trkhdgsi = []
+                As, Bs = trkptsi[:-1], trkptsi[1:]
+                trkhdgsi = [compass2trig(a.bearingTo(b)) for a, b in zip(As, Bs)]
+                trkhdgsi.append(compass2trig(As[-1].finalBearingTo(Bs[-1])))
+
                 seg_npoints.append(nptsseg)
+                trkhdgs.append(trkhdgsi) # Keep ship headings between each pair of points.
                 trkpts.append(trkptsi)
                 trktimes.append(trktimesi)
                 trktimesi = endsegtcorr # Keep most recent time for next line.
                 trkptsi = wptB          # Keep last point for next line.
                 seg_lenghts.append(dAB*1e-3)
                 seg_times.append(tAB/3600)
-                # Keep ship headings between each point.
-                print(1)
-                # Keep number of the current occupation as a coordinate.
-                occupation_number = np.append(occupation_number,
-                                              np.array([nrepp]*nptsseg))
+                # Keep index of the current segment.
+                segment_index = np.append(segment_index, \
+                                          np.array([nsegp]*nptsseg))
+                # Keep index of the current occupation as a coordinate.
+                occupation_index = np.append(occupation_index, \
+                                             np.array([nrepp]*nptsseg))
             if verbose:
                 print("\n")
 
         # Store times and coordinates of the points along the track.
         attrspts = dict(long_name='Lon/lat coordinates of points sampled along the ship track')
         attrstimes = dict(long_name='Times of points sampled along the ship track')
-        attrsocc = dict(long_name='Number of the occupation of each sampled point')
+        attrshdgs = dict(long_name='Angle from East to ship direction between points sampled along the ship track', units='degrees East')
+        attrsocc = dict(long_name='Which occupation each sampled point belongs to')
+        attrsseg = dict(long_name='Which segment each sampled point belongs to')
         assert len(trkpts)==len(trktimes)
-        dim = 'point number'
+        dim = 'point index'
 
         self.trkpts = xr.Variable(data=trkpts, dims=dim, attrs=attrspts)
         self.trktimes = xr.Variable(data=trktimes, dims=dim, attrs=attrstimes)
-        self.occupation_number = xr.Variable(data=np.int32(occupation_number),
-                                             dims=dim, attrs=attrsocc)
+        self.trkhdgs = xr.Variable(data=trkhdgs, dims=dim, attrs=attrshdgs)
+        self.occupation_index = xr.Variable(data=np.int32(occupation_index), \
+                                            dims=dim, attrs=attrsocc)
+        segment_index = np.arange(self.nsegs*self.nrepeat) + 1
+        self.segment_index = xr.Variable(data=np.int32(segment_index), \
+                                         dims=dim, attrs=attrsseg)
 
-        segment_number = np.arange(self.nsegs*self.nrepeat) + 1
-        seg_coords = {'segment number':segment_number}
-        seg_dims = 'segment number'
+        seg_coords = {'segment index':segment_index}
+        seg_dims = 'segment index'
         self.seg_lenghts = xr.DataArray(seg_lenghts, coords=seg_coords,
                                         dims=seg_dims, name='Length of each track segment')
         self.seg_times = xr.DataArray(seg_times, coords=seg_coords, dims=seg_dims,

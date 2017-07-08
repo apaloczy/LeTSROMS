@@ -29,7 +29,7 @@ def chk_synopticity(varship, varsynop, ship_speed, sampling_period, contour_leve
     diffvar = synopvar - shipvar
     x = varship.dship
     if varship.ndim==2:
-        x1 = x[0,:]
+        x1 = x.copy()
         z = varship.zship
         if logscale:
             shipvar = np.log10(shipvar)
@@ -37,11 +37,13 @@ def chk_synopticity(varship, varsynop, ship_speed, sampling_period, contour_leve
             diffvar = synopvar - shipvar
         dz = z[1:,:] - z[:-1,:]
         diffvar_bar = 0.5*(diffvar[1:,:] + diffvar[:-1,:])*dz
-        diffvar_bar = diffvar_bar.sum('z')
+        diffvar_bar = diffvar_bar.sum(axis=0)
         diff_hi = np.max(np.abs(diffvar))
         diff_lo = - diff_hi
         fig, ax = plt.subplots(nrows=4, sharex=True)
         ax1, ax2, ax3, ax4 = ax
+
+        x, z = [np.array(arr) for arr in np.broadcast_arrays(x, z)]
         cs1 = ax1.contourf(x, z, shipvar, contour_levels, shading='flat')
         cs2 = ax2.contourf(x, z, synopvar, contour_levels, shading='flat')
         cs3 = ax3.contourf(x, z, diffvar, contour_levels, vmin=diff_lo, vmax=diff_hi, cmap=plt.cm.seismic, shading='flat')
