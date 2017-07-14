@@ -148,10 +148,8 @@ class RomsShip(object):
     def _interpxy(self, arrs, xn, yn, interpm, pointtype):
         """Interpolate model fields to ship (lon, lat) sample points."""
         arrs = np.array(arrs)
-        if arrs.size==0:
-            arrs = np.array([arrs]) # Array has to be at least 1D to iterate.
-        else:
-            arrs = np.array(arrs)
+        if not isinstance(arrs[0], np.ndarray) and not isinstance(arrs[0], list):
+            arrs = [arrs]
 
         if pointtype=='rho':
             mesh = self._trmesh_rho
@@ -164,7 +162,7 @@ class RomsShip(object):
 
         intarr = []
         for arr in arrs:
-            intarr.append(mesh.interp(xn, yn, arr, order=interpm)[0])
+            intarr.append(mesh.interp(xn, yn, arr.ravel(), order=interpm)[0])
 
         return np.array(intarr)
 
@@ -315,7 +313,7 @@ class RomsShip(object):
         for n in range(self.nshp):
             if verbose:
                 msg = (varname.upper(), str(n+1).zfill(self._ndig), str(self.nshp).zfill(self._ndig))
-                print('Ship-sampling %s (%s of %s).'%msg)
+                print('Ship-sampling %s (point %s of %s).'%msg)
             # Step 1: Find the time steps bounding the wanted time.
             var_tl = vroms[idxtl[n],:]
             var_tr = vroms[idxtr[n],:]
@@ -572,9 +570,9 @@ class ShipTrack(object):
                 wptA = LatLon(lats[n], lons[n])
                 wptB = LatLon(lats[n+1], lons[n+1])
                 dAB = wptA.distanceTo(wptB) # length of current segment [m].
-                tAB = dAB/shipspd # Occupation time of current segment [s].
-                dfrac = dshp/dAB  # Separation between sample points
-                                  # as a fraction of the segment.
+                tAB = dAB/shipspd     # Occupation time of current segment [s].
+                dfrac = dshp/dAB      # Separation between sample points
+                                      # as a fraction of the segment.
                 nn = int(1/dfrac) - 1 # Number of points that fit in this
                                       # segment (excluding waypoints A and B).
                 if nn==-1:
@@ -588,6 +586,7 @@ class ShipTrack(object):
 
                 trkptsi = [wptA.intermediateTo(wptB, dfrac*ni) for ni in range(nn)]
                 trktimesi = [trktimesi + timedelta(sampdt*ni/86400) for ni in range(nn)]
+
                 # Fix actual start time of next segment by accounting for the
                 # time to cover the distance between last sample point and wptB.
                 ttransit = trkptsi[-1].distanceTo(wptB)/shipspd
@@ -609,9 +608,11 @@ class ShipTrack(object):
                 trkptsi = wptB          # Keep last point for next line.
                 seg_lenghts.append(dAB*1e-3)
                 seg_times.append(tAB/3600)
+
                 # Keep index of the current segment.
                 segment_index = np.append(segment_index, \
                                           np.array([nsegp]*nptsseg))
+
                 # Keep index of the current occupation as a coordinate.
                 occupation_index = np.append(occupation_index, \
                                              np.array([nrepp]*nptsseg))
@@ -632,10 +633,11 @@ class ShipTrack(object):
         self.trkhdgs = xr.Variable(data=trkhdgs, dims=dim, attrs=attrshdgs)
         self.occupation_index = xr.Variable(data=np.int32(occupation_index), \
                                             dims=dim, attrs=attrsocc)
-        segment_index = np.arange(self.nsegs*self.nrepeat) + 1
+
         self.segment_index = xr.Variable(data=np.int32(segment_index), \
                                          dims=dim, attrs=attrsseg)
 
+        segment_index = np.arange(self.nsegs*self.nrepeat) + 1
         seg_coords = {'segment index':segment_index}
         seg_dims = 'segment index'
         self.seg_lenghts = xr.DataArray(seg_lenghts, coords=seg_coords,

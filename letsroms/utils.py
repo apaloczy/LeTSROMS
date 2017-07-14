@@ -4,6 +4,8 @@
 # E-mail:      paloczy@gmail.com
 
 __all__ = ['crosstrk_flux',
+           'pespec',
+           'kespec',
            'compass2trig',
            'strip']
 
@@ -37,32 +39,43 @@ def crosstrk_flux(Romsship, varname, transp=False, synop=False, segwise_synop=Fa
     uship = Romsship.ship_sample('u', synop=synop, segwise_synop=segwise_synop, **kw)
     vship = Romsship.ship_sample('v', synop=synop, segwise_synop=segwise_synop, **kw)
     shipvar = Romsship.ship_sample(varname, synop=synop, segwise_synop=segwise_synop, **kw)
-
+    interpm = shipvar._interpm
+    dA = shipvar.dA
     uship = strip(uship)
     vship = strip(vship)
     shipvar = strip(shipvar)
+
     # Rotate velocities to along-/across-track coordinates.
-    # Cross-track velocity (u) is positive to the RIGHT of the track.
     # Rotate back to east-west coordinates and then to track coordinates.
     ang_trk = Romsship.angship
-    ang_grd = Romsship.angle/Romsship._deg2rad # [degrees].
+    ang_grd = Romsship.angle.ravel()/Romsship._deg2rad # [degrees].
     xsrad = strip(Romsship.xship)*Romsship._deg2rad
     ysrad = strip(Romsship.yship)*Romsship._deg2rad
-    ang_grd =  Romsship._interpxy(ang_grd, xsrad, ysrad, shipvar._interpm, 'rho')
+    ang_grd =  Romsship._interpxy(ang_grd, xsrad, ysrad, interpm, 'rho')
     ang_tot = ang_trk - ang_grd # [degrees].
     _, uship = rot_vec(uship, vship, angle=ang_tot, degrees=True)
-    uship = -uship
+    uship = -uship # Cross-track velocity (u) is positive to the RIGHT of the track.
 
     # Calculate cross-track fluxes.
-    dA = shipvar.dA
-    for n in range(self.nsegs):
+    for n in range(Romsship.Shiptrack.nsegs):
         n+=1
-        fseg=self.segment_index==n
+        fseg=Romsship.Shiptrack.segment_index==n
+        print(uship.shape, shipvar.shape, fseg.shape, dA.shape)
         uQcov_a = uship[fseg]*shipvar[fseg]*dA[fseg]
         uQcov_avg = np.append(uQcov_avg, da*np.sum(uQcov_a)/da.sum())
     uship_bar, Qbar = uship*dA,
 
     return uQbar, uQeddy
+
+
+def pespec():
+    """Along-track PE spectrum"""
+    return 1
+
+
+def kespec():
+    """Along-track PE spectrum"""
+    return 1
 
 
 def compass2trig(ang_compass, input_in_degrees=True):
@@ -75,8 +88,10 @@ def compass2trig(ang_compass, input_in_degrees=True):
 
 
 def strip(obj):
-    if obj.fromDataArray:
+    if isinstance(obj, DataArray):
         obj = obj.vship_DataArray.data
+    elif isinstance(obj, np.ndarray):
+        pass
     else:
         obj = obj.vship
 
