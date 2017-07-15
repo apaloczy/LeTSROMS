@@ -1,81 +1,30 @@
 # Description: Utilities for working with
-#              classes in LeTSROMS.
+#              LeTSROMS model-sampled fields.
 # Author/date: André Palóczy, May/2017.
 # E-mail:      paloczy@gmail.com
 
-__all__ = ['crosstrk_flux',
-           'pespec',
-           'kespec',
+__all__ = ['blkavg',
            'compass2trig',
-           'strip']
+           'strip',
+           'conform']
 
 import numpy as np
-from datetime import datetime, timedelta
+from xarray import DataArray
 from pygeodesy.utils import wrap180
-from pygeodesy.sphericalNvector import LatLon
-from xarray import DataArray, Variable
-from ap_tools.utils import rot_vec
 
 
-def crosstrk_flux(Romsship, varname, transp=False, synop=False, segwise_synop=False, **kw):
-    """
-    Calculate the cross-track mean (u_mean*Q_mean) eddy flux (u'*Q') for
-    a variable "Q" sampled from ROMS output. All kwargs are
-    passed to RomsShip.ship_sample().
+def blkavg(arr, coords, dim='x', bins='coarsest', integral=False):
+    if bins=='coarsest':
+        bins = a
+    else:
+        raise NotImplementedError
+    arr = DataArray(data=arr, coords=coords)
+    arr.groupby_bins(dim, bins, right=True, labels=newax).mean(dim)
 
-    The mean is defined as the average of Q over each track line, such that
-    u = u_mean + u' and Q = Q_mean + Q' are the total cross-track velocity
-    and value of Q, respectively.
+    if not integral:
+        arr = arr/bins.sum()
 
-    if 'transp' is True (defaults to False), then the mean and eddy
-    transports (i.e., the mean and eddy fluxes integrated in the vertical
-    and in the along-track direction) for each segment of the track are
-    returned instead of the fluxes. Returns flux(segment index) instead
-    of flux(x, z).
-    """
-    assert isinstance(varname, str), "'varname' must be a string"
-    # assert isinstance(Romsship, RomsShip), "Input must be a letsroms.RomsShip instance" # FIXME.
-
-    uship = Romsship.ship_sample('u', synop=synop, segwise_synop=segwise_synop, **kw)
-    vship = Romsship.ship_sample('v', synop=synop, segwise_synop=segwise_synop, **kw)
-    shipvar = Romsship.ship_sample(varname, synop=synop, segwise_synop=segwise_synop, **kw)
-    interpm = shipvar._interpm
-    dA = shipvar.dA
-    uship = strip(uship)
-    vship = strip(vship)
-    shipvar = strip(shipvar)
-
-    # Rotate velocities to along-/across-track coordinates.
-    # Rotate back to east-west coordinates and then to track coordinates.
-    ang_trk = Romsship.angship
-    ang_grd = Romsship.angle.ravel()/Romsship._deg2rad # [degrees].
-    xsrad = strip(Romsship.xship)*Romsship._deg2rad
-    ysrad = strip(Romsship.yship)*Romsship._deg2rad
-    ang_grd =  Romsship._interpxy(ang_grd, xsrad, ysrad, interpm, 'rho')
-    ang_tot = ang_trk - ang_grd # [degrees].
-    _, uship = rot_vec(uship, vship, angle=ang_tot, degrees=True)
-    uship = -uship # Cross-track velocity (u) is positive to the RIGHT of the track.
-
-    # Calculate cross-track fluxes.
-    for n in range(Romsship.Shiptrack.nsegs):
-        n+=1
-        fseg=Romsship.Shiptrack.segment_index==n
-        print(uship.shape, shipvar.shape, fseg.shape, dA.shape)
-        uQcov_a = uship[fseg]*shipvar[fseg]*dA[fseg]
-        uQcov_avg = np.append(uQcov_avg, da*np.sum(uQcov_a)/da.sum())
-    uship_bar, Qbar = uship*dA,
-
-    return uQbar, uQeddy
-
-
-def pespec():
-    """Along-track PE spectrum"""
-    return 1
-
-
-def kespec():
-    """Along-track PE spectrum"""
-    return 1
+    return None
 
 
 def compass2trig(ang_compass, input_in_degrees=True):
@@ -96,3 +45,15 @@ def strip(obj):
         obj = obj.vship
 
     return obj
+
+
+def conform(arr, stride='right-up'):
+    arr = np.array(arr)
+    assert arr.ndim==2, "Array is not 2D."
+
+    if stride=='right' or stride=='right-up':
+        arr = 0.5*(arr[:,1:] + arr[:,:-1])
+    if stride=='up' or stride=='right-up':
+        arr = 0.5*(arr[1:,:] + arr[:-1,:])
+
+    return arr

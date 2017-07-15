@@ -4,13 +4,14 @@
 
 import numpy as np
 from matplotlib import pyplot as plt
-from gsw import distance
 from mpl_toolkits.mplot3d import Axes3D
 from datetime import datetime, timedelta
 from pandas import to_datetime
 import xarray as xr
 from netCDF4 import Dataset, num2date, date2num
-from ap_tools.utils import near, get_arrdepth
+# from gsw import distance
+from ap_tools.utils import xy2dist
+from ap_tools.utils import near
 from stripack import trmesh
 import pickle
 from os.path import isfile
@@ -19,7 +20,7 @@ from pygeodesy.sphericalNvector import LatLon
 from .utils import compass2trig
 
 __all__ = ['RomsShip',
-           'RomsShipSample',
+           'ShipSample',
            'ShipTrack',
            'ShipTrackError']
 
@@ -46,12 +47,13 @@ class RomsShip(object):
             iswaypt.append(iswpti)
         self._deg2rad = np.pi/180  # [rad/deg].
         self._m2km = 1e-3          # [km/m].
+        self._cph2hz = 1/3600      # [Hz/cph].
         self.iswaypt = np.bool8(self._burst(iswaypt))
         xyship = self._burst(xyship)
         self.tship = self._burst(tship)
         self.xship = np.array([xy.lon for xy in xyship])
         self.yship = np.array([xy.lat for xy in xyship])
-        self.dship = np.append(0., np.cumsum(distance(self.xship, self.yship)))
+        self.dship = xy2dist(self.xship, self.yship, datum='Sphere')
         self.angship = self._burst(angship)
         self.nshp = self.tship.size
         self._ndig = len(str(self.nshp))
@@ -223,7 +225,7 @@ class RomsShip(object):
     def ship_sample(self, varname, interp_method='linear', synop=False, segwise_synop=False, cache=True, xarray_out=True, verbose=True):
         """
         Interpolate model 'varname' to ship track coordinates (x, y, t).
-        Returns a 'RomsShipSample' object.
+        Returns a 'ShipSample' object.
 
         'interp_method' must be 'nearest',
         'linear' or 'cubic'.
@@ -389,10 +391,10 @@ class RomsShip(object):
             elif vship.ndim==1: Vship = (self.tship, self.dship, self.yship, \
                                          self.xship, vship)
 
-        return RomsShipSample(self, Vship)
+        return ShipSample(self, Vship)
 
 
-class RomsShipSample(RomsShip):
+class ShipSample(RomsShip):
     def __init__(self, Romsship, Vship):
         self.Romsship = Romsship # Attach parent class.
         self.dx = Romsship.dx
