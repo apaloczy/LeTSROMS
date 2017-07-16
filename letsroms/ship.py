@@ -13,11 +13,15 @@ from netCDF4 import Dataset, num2date, date2num
 from ap_tools.utils import xy2dist
 from ap_tools.utils import near
 from stripack import trmesh
+import cartopy as ctpy
+import cartopy.crs as ccrs
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+from cmocean.cm import deep
 import pickle
 from os.path import isfile
 from pyroms.vgrid import z_r
 from pygeodesy.sphericalNvector import LatLon
-from .utils import compass2trig
+from .utils import compass2trig, conform, isseq
 
 __all__ = ['RomsShip',
            'ShipSample',
@@ -77,6 +81,11 @@ class RomsShip(object):
         self.latv = self.varsdict['lat_v'][:]
         self.lonp = self.varsdict['lon_psi'][:]
         self.latp = self.varsdict['lat_psi'][:]
+        self.lonmin = self.lonr.min()
+        self.lonmax = self.lonr.max()
+        self.latmin = self.latr.min()
+        self.latmax = self.latr.max()
+        self.bbox = [self.lonmin, self.lonmax, self.latmin, self.latmax]
         self.angle = self.varsdict['angle'][:]
         self.h = self.varsdict['h'][:]
         self.hc = self.varsdict['hc'][:]
@@ -196,15 +205,60 @@ class RomsShip(object):
         return np.array(intarr)
 
 
-    def plt_trkmap(self):
+    def plt_trkmap(self, isobaths=5, resolution='50m', borders=True, \
+                   rivers=True, topog='model', cmap=deep, ncf=100, trkcolor='r', \
+                   trkmarker='o', trkms=5, trkmfc='r', trkmec='r', \
+                   crs=ccrs.PlateCarree(), **kw):
         """
-        Plot topography map with the ship track.
+        Plot topography map with the ship track overlaid.
         """
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(subplot_kw=dict(projection=crs))
+        ax.set_extent(self.bbox, crs)
+        LAND_hires = ctpy.feature.NaturalEarthFeature('physical', 'land', \
+        resolution, edgecolor='k', facecolor=[.9]*3)
+        ax.add_feature(LAND_hires, zorder=2, edgecolor='black')
+        if borders:
+            provinces1 = ctpy.feature.NaturalEarthFeature('cultural', \
+            'admin_1_states_provinces_lines', resolution, facecolor='none')
+            provinces2 = ctpy.feature.NaturalEarthFeature('cultural', \
+            'admin_2_states_provinces_lines', resolution, facecolor='none')
+            ax.add_feature(ctpy.feature.BORDERS, linewidth=0.5, zorder=3)
+            ax.add_feature(provinces1, linewidth=0.5, zorder=3)
+            ax.add_feature(provinces2, linewidth=0.5, zorder=3)
+        if rivers:
+            ax.add_feature(ctpy.feature.RIVERS, zorder=3)
+        ax.coastlines(resolution, zorder=3)
+        gl = ax.gridlines(draw_labels=True, zorder=5)
+        gl.xlabels_top = False
+        gl.ylabels_right = False
+        gl.xformatter = LONGITUDE_FORMATTER
+        gl.yformatter = LATITUDE_FORMATTER
+
+        if topog: # Skip if don't want shaded topography.
+            if topog=='model': # Plot model topography.
+                ax.contourf(self.lonr, self.latr, self.h, ncf, cmap=cmap, zorder=0)
+            elif isinstance(topog, tuple):      # Plot other topography, passed as a
+                lontopo, lattopo, htopo = topog # (lon, lat, h) tuple.
+                ax.contourf(lontopo, lattopo, htopo, ncf, cmap=cmap, zorder=0)
+
+            if isobaths: # Skip if don't want any isobaths.
+                if np.isscalar(isobaths): # Guess isobaths if not provided.
+                    hmi, hma = np.ceil(self.h.min()), np.floor(self.h.max())
+                    isobaths = np.linspace(hmi, hma, num=int(isobaths))
+                elif isseq(isobaths):
+                    isobaths = list(isobaths)
+                ax.contour(self.lonr, self.latr, self.h, levels=isobaths, \
+                           colors='grey', zorder=1)
+
+        # Plot ship track.
+        ax.plot(self.xship, self.yship, linestyle='-', color=trkcolor, \
+                marker=trkmarker, ms=trkms, mfc=trkmfc, mec=trkmec, \
+                zorder=4, **kw)
+
         return fig, ax
 
 
-    def plt_trkxyt(self, **kw):
+    def plt_trkxyt(self):
         """
         Plot the ship track as a 3D line (x, y, t).
 
@@ -436,9 +490,10 @@ class ShipSample(RomsShip):
         elif self.ndim==2:
             self.dims = {'z':Romsship.N, 'time':Romsship.nshp}
             self.dz = self._strip(self.zship[1:,:] - self.zship[:-1,:])
-            self.dz = 0.5*(self.dz[:,1:] + self.dz[:,:-1]) # [m].
+            self.dz = conform(self.dz, stride='right') # [m].
             self.dx, self.dz = [np.array(arr) for arr in \
-                                np.broadcast_arrays(self.dx, self.dz)]
+                                np.broadcast_arrays(self.dx[np.newaxis,:], \
+                                                    self.dz)]
             self.dA = self.dx*self.dz # [m2].
 
 
@@ -455,7 +510,7 @@ class ShipSample(RomsShip):
         elif kind=='white':
             pdf = np.random.rand
         elif kind=='red':
-            raise NotImplementedError("Red noise has not been implemented yet.")
+            raise NotImplementedError("Red noise not implemented yet.")
             return
 
         # Add noise to the sampled variable.
