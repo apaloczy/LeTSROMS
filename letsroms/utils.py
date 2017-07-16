@@ -62,8 +62,8 @@ def conform(arr, stride='right-up'):
 
 
 def isseq(obj):
-    isseq = isinstance(isobaths, list) or \
-            isinstance(isobaths, tuple) or \
-            isinstance(isobaths, np.ndarray)
+    isseq = isinstance(obj, list) or \
+            isinstance(obj, tuple) or \
+            isinstance(obj, np.ndarray)
 
     return isseq

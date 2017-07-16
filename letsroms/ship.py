@@ -10,8 +10,7 @@ from pandas import to_datetime
 import xarray as xr
 from netCDF4 import Dataset, num2date, date2num
 # from gsw import distance
-from ap_tools.utils import xy2dist
-from ap_tools.utils import near
+from ap_tools.utils import xy2dist, near, fmt_isobath
 from stripack import trmesh
 import cartopy as ctpy
 import cartopy.crs as ccrs
@@ -206,9 +205,9 @@ class RomsShip(object):
 
 
     def plt_trkmap(self, isobaths=5, resolution='50m', borders=True, \
-                   rivers=True, topog='model', cmap=deep, ncf=100, trkcolor='r', \
-                   trkmarker='o', trkms=5, trkmfc='r', trkmec='r', \
-                   crs=ccrs.PlateCarree(), **kw):
+                   counties=False, rivers=True, topog='model', \
+                   cmap=deep, ncf=100, trkcolor='r', trkmarker='o', trkms=5, \
+                   trkmfc='r', trkmec='r', crs=ccrs.PlateCarree(), **kw):
         """
         Plot topography map with the ship track overlaid.
         """
@@ -218,11 +217,12 @@ class RomsShip(object):
         resolution, edgecolor='k', facecolor=[.9]*3)
         ax.add_feature(LAND_hires, zorder=2, edgecolor='black')
         if borders:
+            ax.add_feature(ctpy.feature.BORDERS, linewidth=0.5, zorder=3)
+        if counties:
             provinces1 = ctpy.feature.NaturalEarthFeature('cultural', \
             'admin_1_states_provinces_lines', resolution, facecolor='none')
             provinces2 = ctpy.feature.NaturalEarthFeature('cultural', \
             'admin_2_states_provinces_lines', resolution, facecolor='none')
-            ax.add_feature(ctpy.feature.BORDERS, linewidth=0.5, zorder=3)
             ax.add_feature(provinces1, linewidth=0.5, zorder=3)
             ax.add_feature(provinces2, linewidth=0.5, zorder=3)
         if rivers:
@@ -231,8 +231,8 @@ class RomsShip(object):
         gl = ax.gridlines(draw_labels=True, zorder=5)
         gl.xlabels_top = False
         gl.ylabels_right = False
-        gl.xformatter = LONGITUDE_FORMATTER
-        gl.yformatter = LATITUDE_FORMATTER
+        # gl.xformatter = LONGITUDE_FORMATTER
+        # gl.yformatter = LATITUDE_FORMATTER
 
         if topog: # Skip if don't want shaded topography.
             if topog=='model': # Plot model topography.
@@ -241,14 +241,15 @@ class RomsShip(object):
                 lontopo, lattopo, htopo = topog # (lon, lat, h) tuple.
                 ax.contourf(lontopo, lattopo, htopo, ncf, cmap=cmap, zorder=0)
 
-            if isobaths: # Skip if don't want any isobaths.
-                if np.isscalar(isobaths): # Guess isobaths if not provided.
-                    hmi, hma = np.ceil(self.h.min()), np.floor(self.h.max())
-                    isobaths = np.linspace(hmi, hma, num=int(isobaths))
-                elif isseq(isobaths):
-                    isobaths = list(isobaths)
-                ax.contour(self.lonr, self.latr, self.h, levels=isobaths, \
-                           colors='grey', zorder=1)
+        if isobaths: # Skip if don't want any isobaths.
+            if np.isscalar(isobaths): # Guess isobaths if not provided.
+                hmi, hma = np.ceil(self.h.min()), np.floor(self.h.max())
+                isobaths = np.linspace(hmi, hma, num=int(isobaths))
+            elif isseq(isobaths):
+                isobaths = list(isobaths)
+            cc = ax.contour(self.lonr, self.latr, self.h, levels=isobaths, \
+                            colors='grey', zorder=1)
+            fmt_isobath(cc, manual=False)
 
         # Plot ship track.
         ax.plot(self.xship, self.yship, linestyle='-', color=trkcolor, \
