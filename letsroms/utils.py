@@ -3,25 +3,27 @@
 # Author/date: André Palóczy, May/2017.
 # E-mail:      paloczy@gmail.com
 
-__all__ = ['blkavg',
+__all__ = ['blkwavg',
            'compass2trig',
            'strip',
-           'conform']
+           'conform',
+           'isseq']
 
 import numpy as np
 from xarray import DataArray
 from pygeodesy.utils import wrap180
 
 
-def blkavg(arr, coords, dim='x', bins='coarsest', integral=False):
+def blkwavg(arr, coords, dim='x', bins='coarsest', ret_integral=False, **kw):
     if bins=='coarsest':
-        bins = a
+        coords = 1
+        bins = linspace()
     else:
         raise NotImplementedError
     arr = DataArray(data=arr, coords=coords)
-    arr.groupby_bins(dim, bins, right=True, labels=newax).mean(dim)
+    arr.groupby_bins(dim, bins, right=True, labels=newax, **kw).mean(dim)
 
-    if not integral:
+    if not ret_integral:
         arr = arr/bins.sum()
 
     return None
@@ -57,3 +59,11 @@ def conform(arr, stride='right-up'):
         arr = 0.5*(arr[1:,:] + arr[:-1,:])
 
     return arr
+
+
+def isseq(obj):
+    isseq = isinstance(isobaths, list) or \
+            isinstance(isobaths, tuple) or \
+            isinstance(isobaths, np.ndarray)
+
+    return isseq
