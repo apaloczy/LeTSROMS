@@ -14,7 +14,7 @@ __all__ = ['crosstrk_flux',
 import numpy as np
 from scipy.signal import csd
 from ap_tools.utils import rot_vec
-from .utils import strip, conform
+from .utils import blkwavg, strip, conform
 
 
 def crosstrk_flux(Romsship, variable, kind='eddyflx', \
@@ -70,7 +70,7 @@ def crosstrk_flux(Romsship, variable, kind='eddyflx', \
         uship = -uship # Cross-track velocity (u) is positive to the RIGHT of the track.
 
     # Calculate cross-track fluxes.
-    segidx = np.tile(Romsship.Shiptrack.segment_index.data[np.newaxis,:], \
+    segidx = np.tile(strip(Romsship.Shiptrack.segment_index.data)[np.newaxis,:], \
                     (Romsship.N - 1, 1))[:,:-1]
 
     if kind=='eddyflx':
@@ -84,13 +84,16 @@ def crosstrk_flux(Romsship, variable, kind='eddyflx', \
     for n in range(Romsship.Shiptrack.nsegs):
         n+=1
         fseg=segidx==n
-        dxseg = dx[fseg]        # [m].
-        Lseg = dxseg[0,:].sum() # [m].
+        dxseg = dx[fseg]         # [m].
+        print(dxseg)
+        print(dx)
+        Lseg = dxseg[0,:].sum()  # [m].
         ushipn = uship[fseg]
-        shipvarn = shipvar[fseg]# Get Along-track-averaged covariance profile (n-th segment).
-        # Get Along-track-averaged mean cross-track flux profile (n-th segment).
+        shipvarn = shipvar[fseg] # Get Along-track-averaged covariance profile (n-th segment).
+        # # Get Along-track-averaged mean cross-track flux profile (n-th segment).
+        # uQmeann = blkwavg(ushipn, coords, dim='x')
         uQmeann = np.sum(ushipn*dxseg, axis=1)*np.sum(shipvarn*dxseg, axis=1)/Lseg**2 # [uQ].
-        # Get Along-track-averaged covariance profile (n-th segment).
+        # # Get Along-track-averaged covariance profile (n-th segment).
         uQcovn = np.sum(ushipn*shipvarn*dxseg, axis=1)/Lseg # [uQ].
         uQeddyn = uQcovn - uQmeann                          # [uQ].
 
@@ -126,17 +129,19 @@ def kespec():
     raise NotImplementedError
 
 
-def xspec(Romsship, var1name, var2name, synop=False, segwise_synop=False, **kw):
+def xspec(Romsship, var1, var2, synop=False, segwise_synop=False, **kw):
     """Along-track cross-spectrum of two variables 'var1' and 'var2'."""
     assert type(var1)==type(var2), "'var1' and 'var2' must be of the same type."
-    fs = Romsship.sampfreq.data*Romship._cph2hz # [Hz].
+    fs = Romsship.Shiptrack.sampfreq.data*Romsship._cph2hz # [Hz].
     if type(var1)==str:
-        var1 = Romsship.ship_sample(var1name, synop=synop, segwise_synop=segwise_synop, **kw)
-        var2 = Romsship.ship_sample(var2name, synop=synop, segwise_synop=segwise_synop, **kw)
+        var1 = Romsship.ship_sample(var1, synop=synop, segwise_synop=segwise_synop, **kw)
+        var2 = Romsship.ship_sample(var2, synop=synop, segwise_synop=segwise_synop, **kw)
     else:
         var1 = strip(var1)
         var2 = strip(var2)
-    amp, phase = coherence(a, b, **kw)
-    xspecd = csd(varq, var2, fs=fs, return_onesided=True, scaling='density')
+    # amp, phase = coherence(a, b, **kw)
+    f, xspec = csd(var1, var2, fs=fs, return_onesided=False, scaling='density')
+    ampspec = np.abs(xspec)
+    phasespec = np.angle(xspec)
 
-    return amp, phase
+    return f, ampspec, phasespec
