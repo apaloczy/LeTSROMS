@@ -46,14 +46,7 @@ def crosstrk_flux(Romsship, variable, kind='eddyflx', \
         ang_trk = Romsship.angship
 
     assert uship._interpm==vship._interpm
-    interpm = uship._interpm
-    if not hasattr(Romsship, 'ang_grd'):
-        ang_grd = Romsship.angle.ravel()/Romsship._deg2rad # [radians].
-        xsrad = strip(Romsship.xship)*Romsship._deg2rad
-        ysrad = strip(Romsship.yship)*Romsship._deg2rad
-        ang_grd =  Romsship._interpxy(ang_grd, xsrad, ysrad, interpm, 'rho')
-    else:
-        ang_grd = Romsship.ang_grd
+    ang_grd =  Romsship.anggrdship
     ang_tot = ang_trk - ang_grd # [degrees].
 
     if isinstance(variable, str): # If name of variable is given, sample it.

@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 from pandas import to_datetime
 import xarray as xr
 from netCDF4 import Dataset, num2date, date2num
-# from gsw import distance
 from ap_tools.utils import xy2dist, near, fmt_isobath
 from stripack import trmesh
 import cartopy as ctpy
@@ -37,7 +36,7 @@ class RomsShip(object):
     Class that samples a ROMS *_his of *_avg output file simulating a
     ship track. The input 'ship_track' must be a 'letsroms.ShipTrack' instance.
     """
-    def __init__(self, roms_fname, Shiptrack):
+    def __init__(self, roms_fname, Shiptrack, verbose=True):
         assert isinstance(Shiptrack, ShipTrack), "Input must be a 'ShipTrack' instance"
         iswaypt = [] # Flag the first and last points of a segment.
         tship = Shiptrack.trktimes.data
@@ -56,13 +55,14 @@ class RomsShip(object):
         self.tship = self._burst(tship)
         self.xship = np.array([xy.lon for xy in xyship])
         self.yship = np.array([xy.lat for xy in xyship])
+        self._xship_rad = self.xship*self._deg2rad
+        self._yship_rad = self.yship*self._deg2rad
         self.dship = xy2dist(self.xship, self.yship, datum='Sphere')
         self.angship = self._burst(angship)
         self.nshp = self.tship.size
         self._ndig = len(str(self.nshp))
         self.dx = self.dship[1:] - self.dship[:-1] # [m].
         self.dship = self.dship*self._m2km         # [km].
-
         self.filename = roms_fname # Store roms grid (x, y, z, t).
         self.nc = Dataset(self.filename)
         self.varsdict = self.nc.variables
@@ -104,7 +104,12 @@ class RomsShip(object):
         self.zu = z_r(hu, self.hc, self.N, self.s_rho, self.Cs_r, zetau, self.Vtrans)
         self.zv = z_r(hv, self.hc, self.N, self.s_rho, self.Cs_r, zetav, self.Vtrans)
         self.zp = z_r(hp, self.hc, self.N, self.s_rho, self.Cs_r, zetap, self.Vtrans)
-
+        if verbose:
+            print("Interpolating ROMS grid angle to ship track.")
+        self.anggrdship = self.ship_sample('angle', interp_method='linear', \
+                                           synop=True, segwise_synop=True, \
+                                           cache=True, xarray_out=False, \
+                                           verbose=False).vship
 
     def _burst(self, arr):
         """
@@ -158,7 +163,9 @@ class RomsShip(object):
     def _interpxy(self, arrs, xn, yn, interpm, pointtype):
         """Interpolate model fields to ship (lon, lat) sample points."""
         arrs = np.array(arrs)
-        if not isinstance(arrs[0], np.ndarray) and not isinstance(arrs[0], list):
+        if not isinstance(arrs[0], np.ndarray) \
+        and not isinstance(arrs[0], list)\
+        or isinstance(arrs[0], tuple):
             arrs = [arrs]
 
         if pointtype=='rho':
@@ -191,9 +198,6 @@ class RomsShip(object):
             arrs = np.array([arrs]) # Array has to be at least 1D to iterate.
         else:
             arrs = np.array(arrs)
-
-        z_tl = self._get_vgridi(idl, pointtype)
-        z_tr = self._get_vgridi(idr, pointtype)
 
         intarr = []
         for arr in arrs:
@@ -277,7 +281,8 @@ class RomsShip(object):
         return fig, ax
 
 
-    def ship_sample(self, varname, interp_method='linear', synop=False, segwise_synop=False, cache=True, xarray_out=True, verbose=True):
+    def ship_sample(self, varname, interp_method='linear', synop=False, \
+                    segwise_synop=False, cache=True, xarray_out=True, verbose=True):
         """
         Interpolate model 'varname' to ship track coordinates (x, y, t).
         Returns a 'ShipSample' object.
@@ -291,20 +296,20 @@ class RomsShip(object):
         If 'segwise_synop' is False (default), EACH OCCUPATION of the sample
         is synoptic, i.e., each set of consecutive lines that form the ship
         survey pattern. Otherwise, EACH TRANSECT is synoptic individually.
+
+        TODO: Fix segwise_synop=True option.****
         """
         interpm = dict(nearest=0, linear=1, cubic=3)
         interpm = interpm[interp_method]
         self._interpm = interpm
-        xship_rad, yship_rad = self.xship*self._deg2rad, self.yship*self._deg2rad
         # Set up spherical Delaunay mesh to horizontally
         # interpolate the wanted variable in
         # the previous and next time steps.
         pointtype = self._get_pointtype(varname)
         ptt = pointtype[0]
 
-        stail = '.ravel(), order=interpm)[0]'
         trmeshs = "self._trmesh_%s"%pointtype
-        # Bruing trmesh and pickle to the scope of the class.
+        # Bring trmesh and pickle to the scope of the class.
         loc_trmesh = dict(trmesh=globals()['trmesh'])
         loc_pickle = dict(pickle=globals()['pickle'])
         if not hasattr(self, '_trmesh_%s'%pointtype):
@@ -361,31 +366,36 @@ class RomsShip(object):
             zvship = np.empty((self.N, self.nshp))
         elif vroms.ndim==3: # 3D (x, y, t) variables, like 'zeta'.
             vship = np.empty((self.nshp))
+        elif vroms.ndim==2: # 2D (x, y) variables, like 'angle'.
+            vship = np.empty((self.nshp))
+            vroms = vroms[:].ravel()
         else:
-            print("Can only interpolate 2D or 3D variables.")
-            return
+            print("Can only interpolate 2D, 3D or 4D variables.")
+            return None
 
-        tl, tr = self.roms_time[idxtl], self.roms_time[idxtr]
-        self.dt = np.abs(self.ship_time - tl)/(tr - tl) # Store time separations.
+        if vroms.ndim>2:
+            tl, tr = self.roms_time[idxtl], self.roms_time[idxtr]
+            self.dt = np.abs(self.ship_time - tl)/(tr - tl) # Store time separations.
         for n in range(self.nshp):
             if verbose:
                 msg = (varname.upper(), str(n+1).zfill(self._ndig), str(self.nshp).zfill(self._ndig))
                 print('Ship-sampling %s (point %s of %s).'%msg)
             # Step 1: Find the time steps bounding the wanted time.
-            var_tl = vroms[idxtl[n],:]
-            var_tr = vroms[idxtr[n],:]
-
-            z_tl = self._get_vgridi(idxtl[n], pointtype)
-            z_tr = self._get_vgridi(idxtr[n], pointtype)
-            xn, yn = xship_rad[n], yship_rad[n]
-            tn, dtn = self.ship_time[n], self.dt[n]
+            # (only for time-dependent variables).
+            if vroms.ndim>2:
+                var_tl = vroms[idxtl[n],:]
+                var_tr = vroms[idxtr[n],:]
+                tn, dtn = self.ship_time[n], self.dt[n]
+            xn, yn = self._xship_rad[n], self._yship_rad[n]
             xn = np.array([xn, xn]) # Acoxambration (workaround) to avoid trmesh error.
             yn = np.array([yn, yn]) # Acoxambration (workaround) to avoid trmesh error.
             # Step 2: Horizontally interpolate the wanted variable
             # on each pair of bounding time steps and
             # Step 3: Interpolate the 2 time steps to the wanted
             # time in between them.
-            if vroms.ndim==4: # 3D variables.
+            if vroms.ndim==4: # 3D time-dependent variables (x, y, z, t).
+                z_tl = self._get_vgridi(idxtl[n], pointtype)
+                z_tr = self._get_vgridi(idxtr[n], pointtype)
                 for nz in range(self.N):
                     vartup = (var_tl[nz,:].ravel(),
                               var_tr[nz,:].ravel(),
@@ -395,12 +405,14 @@ class RomsShip(object):
                     vship[nz, n] = wrkl + (wrkr - wrkl)*dtn # Linearly interpolate in time.
                     zvship[nz, n] = z_wrkl + (z_wrkr - z_wrkl)*dtn
                 self.zship = zvship
-            elif vroms.ndim==3: # 2D variables.
+            elif vroms.ndim==3: # 2D time-dependent variables (x, y, t).
                 vartup = (var_tl.ravel(), var_tr.ravel())
                 wrkl, wrkr = self._interpxy(vartup, xn, yn, interpm, pointtype)
                 vship[n] = wrkl + (wrkr - wrkl)*dtn
+            elif vroms.ndim==1: # 2D static variables (x, y). After ravel() a few lines above.
+                vship[n] = self._interpxy((vroms), xn, yn, interpm, pointtype)
 
-        # NOTE: use pandas.to_datetime() to make time axis for xarray.
+        # NOTE: Use pandas.to_datetime() to make time axis for xarray.
         # datetime.datetime() causes bugs in xarray.DataArray for
         # non-1D variables.
         if xarray_out:
@@ -427,7 +439,7 @@ class RomsShip(object):
             try:
                 varunits = self.varsdict[varname].units
             except AttributeError:
-                varunits = 'unitless'
+                varunits = 'units not specified'
             attrsd = dict(units=varunits)
             # NOTE: DO NOT set 'encoding' kw on xr.DataArray. Causes
             # irreproducible (?) errors with the time coordinate.

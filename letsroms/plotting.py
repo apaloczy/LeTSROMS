@@ -47,7 +47,7 @@ def chk_synopticity(varship, varsynop, ship_speed, sampling_period, contour_leve
         cs1 = ax1.contourf(x, z, shipvar, contour_levels, shading='flat')
         cs2 = ax2.contourf(x, z, synopvar, contour_levels, shading='flat')
         cs3 = ax3.contourf(x, z, diffvar, contour_levels, vmin=diff_lo, vmax=diff_hi, cmap=plt.cm.seismic, shading='flat')
-        ax4.plot(x1, diffvar_bar, 'k', marker='o', ms=3, label=r'Depth-avg (synop - ship)')
+        ax4.plot(x, diffvar_bar, 'k', marker='o', ms=3, label=r'Depth-avg (synop - ship)')
         ax4.axis('tight')
         ax4.grid()
         ax4.axhline(y=0, linewidth=2.0, color='r', alpha=0.5)
