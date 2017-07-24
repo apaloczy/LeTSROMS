@@ -10,7 +10,7 @@ __all__ = ['blkwavg',
            'isseq']
 
 import numpy as np
-from xarray import DataArray
+from xarray import DataArray, Variable
 from pygeodesy.utils import wrap180
 
 
@@ -41,6 +41,8 @@ def compass2trig(ang_compass, input_in_degrees=True):
 def strip(obj):
     if isinstance(obj, DataArray):
         obj = obj.vship_DataArray.data
+    elif isinstance(obj, Variable):
+        obj = obj.data
     elif isinstance(obj, np.ndarray):
         pass
     else:

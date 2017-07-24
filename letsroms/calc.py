@@ -17,7 +17,7 @@ from ap_tools.utils import rot_vec
 from .utils import blkwavg, strip, conform
 
 
-def crosstrk_flux(Romsship, variable, kind='eddyflx', \
+def crosstrk_flux(Romsship, variable, kind='eddyflux', \
                   synop=False, segwise_synop=False, interp_method='linear', \
                   cache=True, xarray_out=True, verbose=True, **kw):
     """
@@ -31,71 +31,77 @@ def crosstrk_flux(Romsship, variable, kind='eddyflx', \
 
     'kind' can have the following values:
 
-    * 'eddyflx':   Returns uQmean(z) and uQeddy(z), or the mean and eddy
+    * 'eddyflux':   Returns uQmean(z) and uQeddy(z), or the mean and eddy
                    cross-track fluxes of 'Q' for each segment.
 
     * 'eddytransp' Returns uQmean(segnum) and uQeddy(segnum), or the vertical
                    integral of uQmean(x, z) and uQeddy(x, z).
     """
     if not hasattr(Romsship, 'u_xtrk') and not hasattr(Romsship, 'v_atrk'):
-        uship = Romsship.ship_sample('u', synop=synop, segwise_synop=segwise_synop, **kw)
-        vship = Romsship.ship_sample('v', synop=synop, segwise_synop=segwise_synop, **kw)
+        uship = Romsship.ship_sample('u', synop=synop, segwise_synop=segwise_synop)
+        vship = Romsship.ship_sample('v', synop=synop, segwise_synop=segwise_synop)
 
-        # Rotate velocities to along-/across-track if not already available.
-        # Rotate first to east-west coordinates and then to track coordinates.
-        ang_trk = Romsship.angship
+    # Rotate velocities to along-/across-track if not already available. Rotate
+    # first from grid coordinates to east-west coordinates and then to track coordinates.
+    ang_tot = Romsship.angship - Romsship.anggrdship # [degrees].
 
-    assert uship._interpm==vship._interpm
-    ang_grd =  Romsship.anggrdship
-    ang_tot = ang_trk - ang_grd # [degrees].
-
-    if isinstance(variable, str): # If name of variable is given, sample it.
+    if isinstance(variable, str): # If a name of a variable is given, sample it.
         shipvar = Romsship.ship_sample(variable, synop=synop, segwise_synop=segwise_synop, **kw)
-    else: # If sampled variable is provided, no need to sample.
+    else: # No need to sample if wanted variable is already provided.
         shipvar = variable
 
     # Mask cells in the 'dx' array that are under the bottom.
     dx = shipvar.dx
+    dz = shipvar.dz
     uship, vship, shipvar = map(strip, (uship, vship, shipvar))
 
     if not hasattr(Romsship, 'u_xtrk'):
         _, uship = rot_vec(uship, vship, angle=ang_tot, degrees=True)
         uship = -uship # Cross-track velocity (u) is positive to the RIGHT of the track.
 
+    Nm = Romsship.N - 1
+    segnpts = Romsship.Shiptrack.seg_npoints.data
+    occidx = strip(Romsship.Shiptrack.occupation_index)
+    segidx = strip(Romsship.Shiptrack.segment_index.data)
+
     # Calculate cross-track fluxes.
-    segidx = np.tile(strip(Romsship.Shiptrack.segment_index.data)[np.newaxis,:], \
-                    (Romsship.N - 1, 1))[:,:-1]
-
-    if kind=='eddyflx':
-        stride = 'right'
-    elif kind=='eddytransp':
-        stride = 'right-up'
-
+    stride = 'right-up'
     uship = conform(uship, stride=stride)
     shipvar = conform(shipvar, stride=stride)
-    uQmean, uQeddy = np.array([]), np.array([])
-    for n in range(Romsship.Shiptrack.nsegs):
-        n+=1
-        fseg=segidx==n
-        dxseg = dx[fseg]         # [m].
-        print(dxseg)
-        print(dx)
-        Lseg = dxseg[0,:].sum()  # [m].
-        ushipn = uship[fseg]
-        shipvarn = shipvar[fseg] # Get Along-track-averaged covariance profile (n-th segment).
-        # # Get Along-track-averaged mean cross-track flux profile (n-th segment).
-        # uQmeann = blkwavg(ushipn, coords, dim='x')
-        uQmeann = np.sum(ushipn*dxseg, axis=1)*np.sum(shipvarn*dxseg, axis=1)/Lseg**2 # [uQ].
-        # # Get Along-track-averaged covariance profile (n-th segment).
-        uQcovn = np.sum(ushipn*shipvarn*dxseg, axis=1)/Lseg # [uQ].
-        uQeddyn = uQcovn - uQmeann                          # [uQ].
-
-        if kind=='eddytransp':
-            uQmeann = uQmeann
-            uQeddyn = uQeddyn
-
-        uQmean = np.append(uQmean, uQmean)
-        uQeddy = np.append(uQeddy, uQeddyn)
+    Lsegs = Romsship.Shiptrack.seg_lengths.data/Romsship._m2km # [m].
+    for m in range(Romsship.Shiptrack.nrepeat):
+        for n in range(Romsship.Shiptrack.nsegs):
+            fseg=np.where(np.logical_and(occidx==m+1, segidx==n+1))[0]
+            fsegl, fsegr = fseg[0], fseg[-1]
+            dxseg = dx[:, fsegl:fsegr]
+            dzseg = dz[:, fsegl:fsegr]
+            ushipn = uship[:, fsegl:fsegr]
+            shipvarn = shipvar[:, fsegl:fsegr] # Get Along-track-averaged covariance profile (n-th segment).
+            Lseg = Lsegs[n]
+            Hseg = dzseg.sum(axis=0)
+            # Get along-track-averaged mean cross-track profile and covariance (n-th segment).
+            if kind=='eddyflux':
+                uQmeann = np.sum(ushipn*dxseg, axis=1)*np.sum(shipvarn*dxseg, axis=1)/Lseg**2 # [uQ].
+                uQcovn = np.sum(ushipn*shipvarn*dxseg, axis=1)/Lseg                           # [uQ].
+            elif kind=='eddytransp':
+                uQmeann = (np.sum(ushipn*dxseg*dzseg, axis=1)/Hseg)*(np.sum(shipvarn*dxseg*dzseg, axis=1)/Hseg)/Lseg**2
+                uQcovn = np.sum(ushipn*shipvarn*dxseg*dzseg)/Lseg
+            # uQmeann = blkwavg(ushipn, coords, dim='x') # FIXME
+            uQeddyn = uQcovn - uQmeann                   # [uQ].
+            if kind=='eddyflux':
+                if m==n==0:
+                    uQmean = uQmeann[:,np.newaxis]
+                    uQeddy = uQeddyn[:,np.newaxis]
+                else:
+                    uQmean = np.hstack((uQmean, uQmeann[:,np.newaxis]))
+                    uQeddy = np.hstack((uQeddy, uQeddyn[:,np.newaxis]))
+            if kind=='eddytransp':
+                if m==n==0:
+                    uQmean = uQmeann
+                    uQeddy = uQeddyn
+                else:
+                    uQmean = np.append(uQmean, uQmeann)
+                    uQeddy = np.append(uQeddy, uQeddyn)
 
     return uQmean, uQeddy
 

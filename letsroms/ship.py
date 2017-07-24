@@ -37,7 +37,7 @@ class RomsShip(object):
     ship track. The input 'ship_track' must be a 'letsroms.ShipTrack' instance.
     """
     def __init__(self, roms_fname, Shiptrack, verbose=True):
-        assert isinstance(Shiptrack, ShipTrack), "Input must be a 'ShipTrack' instance"
+        assert isinstance(Shiptrack, ShipTrack), "Input must be a 'letsroms.ShipTrack' instance"
         iswaypt = [] # Flag the first and last points of a segment.
         tship = Shiptrack.trktimes.data
         xyship = Shiptrack.trkpts.data
@@ -109,7 +109,7 @@ class RomsShip(object):
         self.anggrdship = self.ship_sample('angle', interp_method='linear', \
                                            synop=True, segwise_synop=True, \
                                            cache=True, xarray_out=False, \
-                                           verbose=False).vship
+                                           verbose=False).vship/self._deg2rad
 
     def _burst(self, arr):
         """
@@ -282,7 +282,8 @@ class RomsShip(object):
 
 
     def ship_sample(self, varname, interp_method='linear', synop=False, \
-                    segwise_synop=False, cache=True, xarray_out=True, verbose=True):
+                    segwise_synop=False, cache=True, xarray_out=True, \
+                    verbose=True, nprint=10):
         """
         Interpolate model 'varname' to ship track coordinates (x, y, t).
         Returns a 'ShipSample' object.
@@ -376,10 +377,13 @@ class RomsShip(object):
         if vroms.ndim>2:
             tl, tr = self.roms_time[idxtl], self.roms_time[idxtr]
             self.dt = np.abs(self.ship_time - tl)/(tr - tl) # Store time separations.
+        msgn=nprint
         for n in range(self.nshp):
-            if verbose:
+            if verbose and np.logical_or(msgn==nprint, n==self.nshp-1):
                 msg = (varname.upper(), str(n+1).zfill(self._ndig), str(self.nshp).zfill(self._ndig))
                 print('Ship-sampling %s (point %s of %s).'%msg)
+                msgn=0
+            msgn+=1
             # Step 1: Find the time steps bounding the wanted time.
             # (only for time-dependent variables).
             if vroms.ndim>2:
@@ -572,7 +576,7 @@ class ShipTrack(object):
                  ~ 0.5 m/s.
     evenspacing: Whether to modify the ship sample points to be
                  evenly spaced within each line. The resulting track
-                 will no longer reflect the ship speed.
+                 will no longer reflect the ship speed exactly.
     closedtrk:   Whether to connect the last waypoint to the first.
     nrepeat:     Number of realizations of the track.
                  * If 'closedtrk' is 'False', moves the ship back and
@@ -583,6 +587,9 @@ class ShipTrack(object):
 
     OUTPUT
     ------
+    An instance of the 'letsroms.ShipTrack' class with the following attributes
+    (and others):
+
     trkpts:      Array of lists of pygeodesy.sphericalNvector.LatLon
                  objects containing the (lon, lat) of each ship sample point along the track.
                  Each list is a segment of the track containing LatLon objects associated
@@ -626,7 +633,7 @@ class ShipTrack(object):
         trktimes = []
         trkpts = []
         trkhdgs = []
-        seg_lenghts = []
+        seg_lengths = []
         seg_times = []
         seg_npoints = []
         segment_index = np.array([])
@@ -676,7 +683,7 @@ class ShipTrack(object):
                 trktimes.append(trktimesi)
                 trktimesi = endsegtcorr # Keep most recent time for next line.
                 trkptsi = wptB          # Keep last point for next line.
-                seg_lenghts.append(dAB*1e-3)
+                seg_lengths.append(dAB*1e-3)
                 seg_times.append(tAB/3600)
 
                 # Keep index of the current segment.
@@ -710,12 +717,14 @@ class ShipTrack(object):
         segment_index = np.arange(self.nsegs*self.nrepeat) + 1
         seg_coords = {'segment index':segment_index}
         seg_dims = 'segment index'
-        self.seg_lenghts = xr.DataArray(seg_lenghts, coords=seg_coords,
-                                        dims=seg_dims, name='Length of each track segment')
+        self.seg_lengths = xr.DataArray(seg_lengths, coords=seg_coords,
+                                        dims=seg_dims, name='Length of each \
+                                        segment of the track')
         self.seg_times = xr.DataArray(seg_times, coords=seg_coords, dims=seg_dims,
-                                        name='Duration of each track segment')
+                                        name='Duration of each segment of the track')
         self.seg_npoints = xr.DataArray(seg_npoints, coords=seg_coords, dims=seg_dims,
-                                        name='Number of points sampled on each track segment')
+                                        name='Number of points sampled on each \
+                                        segment of the track')
 
 
 class ShipTrackError(Exception):
