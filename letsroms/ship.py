@@ -19,7 +19,7 @@ import pickle
 from os.path import isfile
 from pyroms.vgrid import z_r
 from pygeodesy.sphericalNvector import LatLon
-from .utils import compass2trig, conform, isseq
+from .utils import mk_basemap, compass2trig, conform, isseq
 
 __all__ = ['RomsShip',
            'ShipSample',
@@ -208,57 +208,39 @@ class RomsShip(object):
         return np.array(intarr)
 
 
-    def plt_trkmap(self, isobaths=5, resolution='50m', borders=True, \
-                   counties=False, rivers=True, topog='model', \
+    def plt_trkmap(self, topog='model', topog_style='contour', which_isobs=3, \
+                   resolution='50m', borders=True, counties=False, rivers=True, \
                    cmap=deep, ncf=100, trkcolor='r', trkmarker='o', trkms=5, \
-                   trkmfc='r', trkmec='r', crs=ccrs.PlateCarree(), **kw):
+                   trkmfc='r', trkmec='r', crs=ccrs.PlateCarree()):
         """
         Plot topography map with the ship track overlaid.
         """
-        fig, ax = plt.subplots(subplot_kw=dict(projection=crs))
-        ax.set_extent(self.bbox, crs)
-        LAND_hires = ctpy.feature.NaturalEarthFeature('physical', 'land', \
-        resolution, edgecolor='k', facecolor=[.9]*3)
-        ax.add_feature(LAND_hires, zorder=2, edgecolor='black')
-        if borders:
-            ax.add_feature(ctpy.feature.BORDERS, linewidth=0.5, zorder=3)
-        if counties:
-            provinces1 = ctpy.feature.NaturalEarthFeature('cultural', \
-            'admin_1_states_provinces_lines', resolution, facecolor='none')
-            provinces2 = ctpy.feature.NaturalEarthFeature('cultural', \
-            'admin_2_states_provinces_lines', resolution, facecolor='none')
-            ax.add_feature(provinces1, linewidth=0.5, zorder=3)
-            ax.add_feature(provinces2, linewidth=0.5, zorder=3)
-        if rivers:
-            ax.add_feature(ctpy.feature.RIVERS, zorder=3)
-        ax.coastlines(resolution, zorder=3)
-        gl = ax.gridlines(draw_labels=True, zorder=5)
-        gl.xlabels_top = False
-        gl.ylabels_right = False
-        # gl.xformatter = LONGITUDE_FORMATTER
-        # gl.yformatter = LATITUDE_FORMATTER
-
-        if topog: # Skip if don't want shaded topography.
+        if topog: # Skip if don't want any topography.
             if topog=='model': # Plot model topography.
-                ax.contourf(self.lonr, self.latr, self.h, ncf, cmap=cmap, zorder=0)
-            elif isinstance(topog, tuple):      # Plot other topography, passed as a
-                lontopo, lattopo, htopo = topog # (lon, lat, h) tuple.
-                ax.contourf(lontopo, lattopo, htopo, ncf, cmap=cmap, zorder=0)
+                topog = self.lonr, self.latr, self.h
+                h = self.h
+            elif isinstance(topog, tuple): # Plot other topography, passed
+                h = topog[2]               # as a (lon, lat, h) tuple.
 
-        if isobaths: # Skip if don't want any isobaths.
-            if np.isscalar(isobaths): # Guess isobaths if not provided.
-                hmi, hma = np.ceil(self.h.min()), np.floor(self.h.max())
-                isobaths = np.linspace(hmi, hma, num=int(isobaths))
-            elif isseq(isobaths):
-                isobaths = list(isobaths)
-            cc = ax.contour(self.lonr, self.latr, self.h, levels=isobaths, \
-                            colors='grey', zorder=1)
-            fmt_isobath(cc, manual=False)
+            if which_isobs:
+                if np.isscalar(which_isobs): # Guess isobaths if not provided.
+                    hmi, hma = np.ceil(h.min()), np.floor(h.max())
+                    which_isobs = np.linspace(hmi, hma, num=int(which_isobs))
+                elif isseq(which_isobs):
+                    which_isobs = list(which_isobs)
+            else:
+                which_isobs = 0
+
+        # Plot base map.
+        kwm = dict(topog=topog, which_isobs=which_isobs, \
+                   topog_style=topog_style, resolution=resolution, \
+                   borders=borders, counties=counties, rivers=rivers, \
+                   cmap=cmap, ncf=ncf, crs=crs)
+        fig, ax = mk_basemap(self.bbox, **kwm)
 
         # Plot ship track.
         ax.plot(self.xship, self.yship, linestyle='-', color=trkcolor, \
-                marker=trkmarker, ms=trkms, mfc=trkmfc, mec=trkmec, \
-                zorder=4, **kw)
+                marker=trkmarker, ms=trkms, mfc=trkmfc, mec=trkmec, zorder=4)
 
         return fig, ax
 
