@@ -21,32 +21,37 @@ import cartopy.crs as ccrs
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 from pygeodesy.utils import wrap180
 
+km2nm = 1/1.852 # [nm/km]
+m2km = 1e-3     # [km/m]
 
-def mk_transect(m, ntr, plot=True):
+
+def mk_transect(ax, ntransects, contiguous=True):
     """
     USAGE
     -----
     lon, lat, dist = mk_transect(ax, ntransects, plot=True)
     """
+    ninp = 2
     Xs, Ys, Ds = [], [], []
-    for n in range(ntr):
-        xs, ys = np.array([]), np.array([])
-        pts = plt.ginput(n=2)
+    for n in range(ntransects):
+        if ninp==2:
+            xs, ys = np.array([]), np.array([])
+        pts = plt.ginput(n=ninp, timeout=0)
         for pt in pts:
-            x0, y0 = m(pt[0], pt[1], inverse=True)
+            x0, y0 = pt[0], pt[1]
             xs = np.append(xs, x0)
             ys = np.append(ys, y0)
+        if contiguous:
+            ninp = 1
 
-        d =  xy2dist(xs, ys, datum='Sphere')*km2m # [m].
-        print("Transect length: %.2f km, %.2f nm"%(d,d*km2nm))
+        d =  xy2dist(xs, ys, datum='Sphere')[-1]*m2km # [km].
+        print("Transect length: %.2f km / %.2f nm"%(d, d*km2nm))
         Xs.append(xs)
         Ys.append(ys)
         Ds.append(d)
 
-        if plot:
-            print(xs)
-            print(ys)
-            m.plot(xs, ys, 'r', linewidth=2.0, latlon=True, zorder=999)
+        ax.plot(xs, ys, 'r', linewidth=2.0, zorder=9)
+        plt.draw()
 
     Xs, Ys, Ds = map(np.squeeze, (Xs, Ys, Ds))
     Xs, Ys, Ds = map(np.array, (Xs, Ys, Ds))
@@ -62,7 +67,7 @@ def mk_basemap(bbox, topog=None, topog_style='contour', which_isobs=3, \
     -----
     fig, ax = mk_basemap(bbox, **kw)
 
-    Makes a base map covering the given 'bbox' [lonmin, lonmax, latmin, katmax].
+    Makes a base map covering the given 'bbox' [lonmin, lonmax, latmin, latmax].
     """
     fig, ax = plt.subplots(subplot_kw=dict(projection=crs))
     ax.set_extent(bbox, crs)
@@ -165,6 +170,3 @@ def isseq(obj):
             isinstance(obj, np.ndarray)
 
     return isseq
-
-km2nm = 1/1.852 # [nm/km].
-m2km = 1e-3     # [km/m]

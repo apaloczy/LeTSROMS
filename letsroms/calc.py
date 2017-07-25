@@ -37,27 +37,27 @@ def crosstrk_flux(Romsship, variable, kind='eddyflux', \
     * 'eddytransp' Returns uQmean(segnum) and uQeddy(segnum), or the vertical
                    integral of uQmean(x, z) and uQeddy(x, z).
     """
-    if not hasattr(Romsship, 'u_xtrk') and not hasattr(Romsship, 'v_atrk'):
-        uship = Romsship.ship_sample('u', synop=synop, segwise_synop=segwise_synop)
-        vship = Romsship.ship_sample('v', synop=synop, segwise_synop=segwise_synop)
+    # if not hasattr(Romsship, 'u_xtrk') and not hasattr(Romsship, 'v_atrk'):
+    uship = Romsship.ship_sample('u', synop=synop, segwise_synop=segwise_synop)
+    vship = Romsship.ship_sample('v', synop=synop, segwise_synop=segwise_synop)
 
     # Rotate velocities to along-/across-track if not already available. Rotate
     # first from grid coordinates to east-west coordinates and then to track coordinates.
     ang_tot = Romsship.angship - Romsship.anggrdship # [degrees].
 
-    if isinstance(variable, str): # If a name of a variable is given, sample it.
-        shipvar = Romsship.ship_sample(variable, synop=synop, segwise_synop=segwise_synop, **kw)
-    else: # No need to sample if wanted variable is already provided.
-        shipvar = variable
+    # if isinstance(variable, str): # If a name of a variable is given, sample it.
+    shipvar = Romsship.ship_sample(variable, synop=synop, segwise_synop=segwise_synop, **kw)
+    # else: # No need to sample if wanted variable is already provided.
+    #     shipvar = variable
 
     # Mask cells in the 'dx' array that are under the bottom.
     dx = shipvar.dx
-    dz = shipvar.dz
+    dzm = shipvar.dzm # 'dz' at the points in between ship samples.
     uship, vship, shipvar = map(strip, (uship, vship, shipvar))
 
-    if not hasattr(Romsship, 'u_xtrk'):
-        _, uship = rot_vec(uship, vship, angle=ang_tot, degrees=True)
-        uship = -uship # Cross-track velocity (u) is positive to the RIGHT of the track.
+    # if not hasattr(Romsship, 'u_xtrk'):
+    _, uship = rot_vec(uship, vship, angle=ang_tot, degrees=True)
+    uship = -uship # Cross-track velocity (u) is positive to the RIGHT of the track.
 
     Nm = Romsship.N - 1
     segnpts = Romsship.Shiptrack.seg_npoints.data
@@ -66,32 +66,30 @@ def crosstrk_flux(Romsship, variable, kind='eddyflux', \
 
     # Calculate cross-track fluxes.
     stride = 'right-up'
-    uship = conform(uship, stride=stride)
-    shipvar = conform(shipvar, stride=stride)
     Lsegs = Romsship.Shiptrack.seg_lengths.data/Romsship._m2km # [m].
     for m in range(Romsship.Shiptrack.nrepeat):
         for n in range(Romsship.Shiptrack.nsegs):
             fseg=np.where(np.logical_and(occidx==m+1, segidx==n+1))[0]
             fsegl, fsegr = fseg[0], fseg[-1]
             dxseg = dx[:, fsegl:fsegr]
-            dzseg = dz[:, fsegl:fsegr]
-            ushipn = uship[:, fsegl:fsegr]
-            shipvarn = shipvar[:, fsegl:fsegr] # Get Along-track-averaged covariance profile (n-th segment).
+            dzseg = dzm[:, fsegl:fsegr]
+            ushipn = conform(uship[:, fsegl:fsegr], stride=stride)
+            shipvarn = conform(shipvar[:, fsegl:fsegr], stride=stride) # Get Along-track-averaged covariance profile (n-th segment).
             Lseg = Lsegs[n]
-            Hseg = dzseg.sum(axis=0)
-            # Get along-track-averaged mean cross-track profile and covariance (n-th segment).
-            if kind=='eddyflux':
-                uQmeann = np.sum(ushipn*dxseg, axis=1)*np.sum(shipvarn*dxseg, axis=1)/Lseg**2 # [uQ].
-                uQcovn = np.sum(ushipn*shipvarn*dxseg, axis=1)/Lseg                           # [uQ].
-            elif kind=='eddytransp':
-                uQmeann = (np.sum(ushipn*dxseg*dzseg, axis=1)/Hseg)*(np.sum(shipvarn*dxseg*dzseg, axis=1)/Hseg)/Lseg**2
-                uQcovn = np.sum(ushipn*shipvarn*dxseg*dzseg)/Lseg
             # uQmeann = blkwavg(ushipn, coords, dim='x') # FIXME
-            uQeddyn = uQcovn - uQmeann                   # [uQ].
+            # Get along-track-averaged mean cross-track profile and covariance (for this segment).
+            print(ushipn.shape, dxseg.shape, shipvarn.shape)
+            uQmeann = np.sum(ushipn*dxseg, axis=1)*np.sum(shipvarn*dxseg, axis=1)/Lseg**2
+            uQcovn = np.sum(ushipn*shipvarn*dxseg, axis=1)/Lseg
+            uQeddyn = uQcovn - uQmeann # uQ = f(z).
+            if kind=='eddytransp':     # uQ = f(segment #).
+                dzsegavg = dzseg.mean(axis=1)
+                uQmeann = np.sum(uQmeann*dzsegavg) # [u]*[Q]*m, transports per
+                uQeddyn = np.sum(uQeddyn*dzsegavg) # unit along-track length.
             if kind=='eddyflux':
                 if m==n==0:
-                    uQmean = uQmeann[:,np.newaxis]
-                    uQeddy = uQeddyn[:,np.newaxis]
+                    uQmean = uQmeann[:,np.newaxis] # [u]*[Q], along-track
+                    uQeddy = uQeddyn[:,np.newaxis] # averaged Q transports.
                 else:
                     uQmean = np.hstack((uQmean, uQmeann[:,np.newaxis]))
                     uQeddy = np.hstack((uQeddy, uQeddyn[:,np.newaxis]))

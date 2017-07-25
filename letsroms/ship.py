@@ -459,7 +459,7 @@ class ShipSample(RomsShip):
             if self.ndim==2:
                 self.zship = Vship.coords['depth']
                 self.dz = self._strip(self.zship[1:,:] - self.zship[:-1,:])
-                self.dz = 0.5*(self.dz[:,1:] + self.dz[:,:-1]) # [m].
+                self.dzm = conform(self.dz, stride='right')
 
             if Vship.attrs.__contains__('units') and len(Vship.attrs)>1:
                 self.attrs_vship = Vship.attrs # Attach other attributes if they are present.
@@ -489,12 +489,11 @@ class ShipSample(RomsShip):
         elif self.ndim==2:
             self.dims = {'z':Romsship.N, 'time':Romsship.nshp}
             self.dz = self._strip(self.zship[1:,:] - self.zship[:-1,:])
-            self.dz = conform(self.dz, stride='right') # [m].
-            self.dx, self.dz = [np.array(arr) for arr in \
-                                np.broadcast_arrays(self.dx[np.newaxis,:], \
-                                                    self.dz)]
-            self.dA = self.dx*self.dz # [m2].
-
+            self.dzm = conform(self.dz, stride='right') # [m].
+            self.dx, self.dzm = [np.array(arr) for arr in \
+                                 np.broadcast_arrays(self.dx[np.newaxis,:], \
+                                                     self.dzm)]
+            self.dA = self.dx*self.dzm # [m2].
 
     def add_noise(self, std, mean=0, kind='gaussian', verbose=True):
         """
@@ -620,6 +619,8 @@ class ShipTrack(object):
         seg_npoints = []
         segment_index = np.array([])
         occupation_index = np.array([])
+        segment_indexm = np.array([])
+        occupation_indexm = np.array([])
         for nrep in range(nrepeat):
             nrepp = nrep + 1
             if verbose:
@@ -671,10 +672,14 @@ class ShipTrack(object):
                 # Keep index of the current segment.
                 segment_index = np.append(segment_index, \
                                           np.array([nsegp]*nptsseg))
+                segment_indexm = np.append(segment_indexm, \
+                                          np.array([nsegp]*(nptsseg-1)))
 
                 # Keep index of the current occupation as a coordinate.
                 occupation_index = np.append(occupation_index, \
                                              np.array([nrepp]*nptsseg))
+                occupation_indexm = np.append(occupation_indexm, \
+                                              np.array([nrepp]*(nptsseg-1)))
             if verbose:
                 print("\n")
 
@@ -683,7 +688,9 @@ class ShipTrack(object):
         attrstimes = dict(long_name='Times of points sampled along the ship track')
         attrshdgs = dict(long_name='Angle from East to ship direction between points sampled along the ship track', units='degrees East')
         attrsocc = dict(long_name='Which occupation each sampled point belongs to')
+        attrsoccm = dict(long_name='Which occupation each midpoint between two adjacent sampled points belongs to')
         attrsseg = dict(long_name='Which segment each sampled point belongs to')
+        attrssegm = dict(long_name='Which segment each midpoint between two adjacent sampled points belongs to')
         assert len(trkpts)==len(trktimes)
         dim = 'point index'
 
@@ -692,9 +699,12 @@ class ShipTrack(object):
         self.trkhdgs = xr.Variable(data=trkhdgs, dims=dim, attrs=attrshdgs)
         self.occupation_index = xr.Variable(data=np.int32(occupation_index), \
                                             dims=dim, attrs=attrsocc)
-
+        self.occupation_indexm = xr.Variable(data=np.int32(occupation_indexm), \
+                                             dims=dim, attrs=attrsoccm)
         self.segment_index = xr.Variable(data=np.int32(segment_index), \
                                          dims=dim, attrs=attrsseg)
+        self.segment_indexm = xr.Variable(data=np.int32(segment_indexm), \
+                                          dims=dim, attrs=attrssegm)
 
         segment_index = np.arange(self.nsegs*self.nrepeat) + 1
         seg_coords = {'segment index':segment_index}
