@@ -78,6 +78,7 @@ def crosstrk_flux(Romsship, variable, kind='eddyflux', \
             # uQmeann = blkwavg(ushipn, coords, dim='x') # FIXME
             # Get along-track-averaged mean cross-track profile and covariance (for this segment).
             print(ushipn.shape, dxseg.shape, shipvarn.shape)
+            print(fsegl, fsegr)
             uQmeann = np.sum(ushipn*dxseg, axis=1)*np.sum(shipvarn*dxseg, axis=1)/Lseg**2
             uQcovn = np.sum(ushipn*shipvarn*dxseg, axis=1)/Lseg
             uQeddyn = uQcovn - uQmeann # uQ = f(z).

@@ -62,9 +62,8 @@ class RomsShip(object):
         self.nshp = self.tship.size
         self._ndig = len(str(self.nshp))
         self.dx = self.dship[1:] - self.dship[:-1] # [m].
-        self._dxtol = 1e-1 # [m], minimum distance for a pair of points to be considered valid.
-        self._fbaddx = np.abs(self.dx)<self._dxtol
-        self.dx[self._fbaddx] = np.nan
+        self._dxtol = 1e-2 # [m], minimum distance for a pair of points to be considered valid.
+        self._fguddx = self.dx>self._dxtol
         self.dship = self.dship*self._m2km         # [km].
         self.filename = roms_fname # Store roms grid (x, y, z, t).
         self.nc = Dataset(self.filename)
@@ -268,8 +267,8 @@ class RomsShip(object):
 
 
     def ship_sample(self, varname, interp_method='linear', synop=False, \
-                    segwise_synop=False, cache=True, xarray_out=True, \
-                    verbose=True, nprint=10):
+                    segwise_synop=False, fix_dx=False, cache=True, \
+                    xarray_out=True, verbose=True, nprint=10):
         """
         Interpolate model 'varname' to ship track coordinates (x, y, t).
         Returns a 'ShipSample' object.
@@ -362,6 +361,7 @@ class RomsShip(object):
 
         if vroms.ndim>2:
             tl, tr = self.roms_time[idxtl], self.roms_time[idxtr]
+            print(tl.shape, tr.shape, self.ship_time.shape)
             self.dt = np.abs(self.ship_time - tl)/(tr - tl) # Store time separations.
         msgn=nprint
         for n in range(self.nshp):
@@ -399,8 +399,26 @@ class RomsShip(object):
                 vartup = (var_tl.ravel(), var_tr.ravel())
                 wrkl, wrkr = self._interpxy(vartup, xn, yn, interpm, pointtype)
                 vship[n] = wrkl + (wrkr - wrkl)*dtn
-            elif vroms.ndim==1: # 2D static variables (x, y). After ravel() a few lines above.
+            elif vroms.ndim==1: # 2D static variables (x, y). Becomes 1D after applying ravel() a few lines above.
                 vship[n] = self._interpxy((vroms), xn, yn, interpm, pointtype)
+
+        if fix_dx and not hasattr(self, '_FIXED_DX'):
+            dxaux = self.dx[self._fguddx]
+            self.dxr = np.array([])
+            for ns in range(self.Shiptrack.nsegs):
+                fsegm = self.Shiptrack.segment_indexm.data==(ns+1)
+                dxseg = dxaux[fsegm]
+                dxrseg = 0.5*(dxseg[1:] + dxseg[:-1])
+                dxrseg = np.concatenate((np.array([dxseg[0]]), dxrseg, np.array([dxseg[-1]])))
+                self.dxr = np.append(self.dxr, dxrseg)
+
+            vship = 0.5*(vship[...,1:]*self.dxr[...,1:] + vship[...,:-1]*self.dxr[...,:-1])/self.dx
+            if vship.ndim==1:
+                vship = vship[self._fguddx]
+            elif vship.ndim==2:
+                vship = vship[self._fguddx[np.newaxis,:]]
+            self.dx = self.dx[self._fguddx]
+            self._FIXED_DX = True
 
         # NOTE: Use pandas.to_datetime() to make time axis for xarray.
         # datetime.datetime() causes bugs in xarray.DataArray for
@@ -448,11 +466,11 @@ class RomsShip(object):
             elif vship.ndim==1: Vship = (self.tship, self.dship, self.yship, \
                                          self.xship, vship)
 
-        return ShipSample(self, Vship)
+        return ShipSample(self, Vship, fix_dx=fix_dx)
 
 
 class ShipSample(RomsShip):
-    def __init__(self, Romsship, Vship):
+    def __init__(self, Romsship, Vship, fix_dx=False):
         self.Romsship = Romsship # Attach parent class.
         self.dx = Romsship.dx
         self._interpm = self.Romsship._interpm
@@ -493,10 +511,10 @@ class ShipSample(RomsShip):
         elif self.ndim==2:
             self.dims = {'z':Romsship.N, 'time':Romsship.nshp}
             self.dz = self._strip(self.zship[1:,:] - self.zship[:-1,:])
+            self.dx = np.tile(self.dx[np.newaxis,:], (Romsship.N-1, 1))
             self.dzm = conform(self.dz, stride='right') # [m].
-            self.dx, self.dzm = [np.array(arr) for arr in \
-                                 np.broadcast_arrays(self.dx[np.newaxis,:], \
-                                                     self.dzm)]
+            if fix_dx:
+                self.dzm = self.dzm[:,self.Romsship._fguddx]
             self.dA = self.dx*self.dzm # [m2].
 
     def add_noise(self, std, mean=0, kind='gaussian', verbose=True):

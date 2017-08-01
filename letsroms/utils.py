@@ -169,12 +169,19 @@ def strip(obj):
 
 def conform(arr, stride='right-up'):
     arr = np.array(arr)
-    assert arr.ndim==2, "Array is not 2D."
+    if stride=='right-up':
+        assert arr.ndim==2, "Array is not 2D."
 
-    if stride=='right' or stride=='right-up':
-        arr = 0.5*(arr[:,1:] + arr[:,:-1])
-    if stride=='up' or stride=='right-up':
-        arr = 0.5*(arr[1:,:] + arr[:-1,:])
+    if arr.ndim==1:
+        if stride=='right' or stride=='right-up':
+            arr = 0.5*(arr[1:] + arr[:-1])
+        if stride=='up' or stride=='right-up':
+            arr = 0.5*(arr[1:] + arr[:-1])
+    elif arr.ndim==2:
+        if stride=='right' or stride=='right-up':
+            arr = 0.5*(arr[:,1:] + arr[:,:-1])
+        if stride=='up' or stride=='right-up':
+            arr = 0.5*(arr[1:,:] + arr[:-1,:])
 
     return arr
 
