@@ -25,14 +25,18 @@ km2nm = 1/1.852 # [nm/km]
 m2km = 1e-3     # [km/m]
 
 
-def mk_transect(ax, ntransects, contiguous=True):
+def mk_transect(ax, ntransects, contiguous=True, shipspd=None, \
+                bbox_zoom=None, crs=ccrs.PlateCarree()):
     """
     USAGE
     -----
     lon, lat, dist = mk_transect(ax, ntransects, plot=True)
     """
+    if bbox_zoom:
+        ax.set_extent(bbox_zoom, crs)
+        plt.draw()
     ninp = 2
-    Xs, Ys, Ds = [], [], []
+    Xs, Ys, Ds, Ts = [], [], [], []
     for n in range(ntransects):
         if ninp==2:
             xs, ys = np.array([]), np.array([])
@@ -44,24 +48,35 @@ def mk_transect(ax, ntransects, contiguous=True):
         if contiguous:
             ninp = 1
 
-        d =  xy2dist(xs, ys, datum='Sphere')[-1]*m2km # [km].
-        print("Transect length: %.2f km / %.2f nm"%(d, d*km2nm))
+        dd =  xy2dist(xs, ys, datum='Sphere')[-1]*m2km # [km].
+        print("Transect length: %.2f km / %.2f nm"%(dd, dd*km2nm))
+        if shipspd:
+            dt = dd*km2nm/shipspd # [h]
+            print("Occupation time at %.1f kn: %.2f h"%(shipspd, dt))
+            Ts.append(dt)
         Xs.append(xs)
         Ys.append(ys)
-        Ds.append(d)
+        Ds.append(dd)
 
         ax.plot(xs, ys, 'r', linewidth=2.0, zorder=9)
         plt.draw()
 
-    Xs, Ys, Ds = map(np.squeeze, (Xs, Ys, Ds))
-    Xs, Ys, Ds = map(np.array, (Xs, Ys, Ds))
+    Xs, Ys, Ds, Ts = map(np.squeeze, (Xs, Ys, Ds, Ts))
+    Xs, Ys, Ds, Ts = map(np.array, (Xs, Ys, Ds, Ts))
+    if contiguous:
+        Xs, Ys = Xs[-1], Ys[-1]
 
-    return Xs, Ys, Ds
+    if shipspd:
+        print('')
+        print("Total occupation time at %.1f kn ---------> %.2f h"%(shipspd, Ts.sum()))
+        return Xs, Ys, Ds, Ts
+    else:
+        return Xs, Ys, Ds
 
 
 def mk_basemap(bbox, topog=None, topog_style='contour', which_isobs=3, \
                resolution='50m', borders=True, counties=False, rivers=True, \
-               cmap=deep, ncf=100, crs=ccrs.PlateCarree()):
+               cmap=deep, ncf=100, manual_clabel=False, crs=ccrs.PlateCarree()):
     """
     USAGE
     -----
@@ -98,7 +113,7 @@ def mk_basemap(bbox, topog=None, topog_style='contour', which_isobs=3, \
                 which_isobs = list(which_isobs)
             cc = ax.contour(lontopo, lattopo, htopo, levels=which_isobs, \
                             colors='grey', zorder=1)
-            fmt_isobath(cc, manual=False, zorder=0)
+            fmt_isobath(cc, manual=manual_clabel, zorder=0)
         if topog_style=='pcolor' or topog_style=='both':
             ax.pcolormesh(lontopo, lattopo, htopo, cmap=cmap, zorder=0)
         if topog_style=='contourf':

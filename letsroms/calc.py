@@ -60,9 +60,8 @@ def crosstrk_flux(Romsship, variable, kind='eddyflux', \
     uship = -uship # Cross-track velocity (u) is positive to the RIGHT of the track.
 
     Nm = Romsship.N - 1
-    segnpts = Romsship.Shiptrack.seg_npoints.data
-    occidx = strip(Romsship.Shiptrack.occupation_index)
-    segidx = strip(Romsship.Shiptrack.segment_index.data)
+    occidx = strip(Romsship.Shiptrack.occupation_indexm.data)
+    segidx = strip(Romsship.Shiptrack.segment_indexm.data)
 
     # Calculate cross-track fluxes.
     stride = 'right-up'

@@ -62,6 +62,9 @@ class RomsShip(object):
         self.nshp = self.tship.size
         self._ndig = len(str(self.nshp))
         self.dx = self.dship[1:] - self.dship[:-1] # [m].
+        self._dxtol = 1e-1 # [m], minimum distance for a pair of points to be considered valid.
+        self._fbaddx = np.abs(self.dx)<self._dxtol
+        self.dx[self._fbaddx] = np.nan
         self.dship = self.dship*self._m2km         # [km].
         self.filename = roms_fname # Store roms grid (x, y, z, t).
         self.nc = Dataset(self.filename)
@@ -211,7 +214,8 @@ class RomsShip(object):
     def plt_trkmap(self, topog='model', topog_style='contour', which_isobs=3, \
                    resolution='50m', borders=True, counties=False, rivers=True, \
                    cmap=deep, ncf=100, trkcolor='r', trkmarker='o', trkms=5, \
-                   trkmfc='r', trkmec='r', crs=ccrs.PlateCarree()):
+                   trkmfc='r', trkmec='r', manual_clabel=False, \
+                   crs=ccrs.PlateCarree()):
         """
         Plot topography map with the ship track overlaid.
         """
@@ -235,7 +239,7 @@ class RomsShip(object):
         kwm = dict(topog=topog, which_isobs=which_isobs, \
                    topog_style=topog_style, resolution=resolution, \
                    borders=borders, counties=counties, rivers=rivers, \
-                   cmap=cmap, ncf=ncf, crs=crs)
+                   cmap=cmap, ncf=ncf, manual_clabel=manual_clabel, crs=crs)
         fig, ax = mk_basemap(self.bbox, **kwm)
 
         # Plot ship track.
