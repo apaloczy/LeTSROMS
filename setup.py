@@ -5,7 +5,7 @@ def readme():
         return f.read()
 
 setup(name='letsroms',
-      version='0.1b0',
+      version='0.1.0a',
       description='Python module to sample outputs from the Regional Ocean Modeling System (ROMS) simulating a ship survey.',
       url='https://github.com/apaloczy/LeTSROMS',
       license='MIT',
