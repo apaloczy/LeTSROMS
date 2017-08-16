@@ -17,7 +17,7 @@ from ap_tools.utils import rot_vec
 from .utils import blkwavg, strip, conform
 
 
-def crosstrk_flux(Romsship, variable, kind='eddyflux', \
+def crosstrk_flux(Romsship, variable, kind='eddyflux', normalize=True, \
                   synop=False, segwise_synop=False, interp_method='linear', \
                   cache=True, xarray_out=True, verbose=True, **kw):
     """
@@ -46,10 +46,6 @@ def crosstrk_flux(Romsship, variable, kind='eddyflux', \
     # first from grid coordinates to east-west coordinates and then to track \
     # coordinates.
     ang_tot = Romsship.angship - Romsship.anggrdship # [degrees].
-
-    shipvar = Romsship.ship_sample(variable, synop=synop, \
-                                   segwise_synop=segwise_synop, \
-                                   fix_dx=fix_dx, **kw)
     Uship = Romsship.ship_sample('u', synop=synop, \
                                  segwise_synop=segwise_synop, \
                                  fix_dx=fix_dx, **kw)
@@ -61,6 +57,15 @@ def crosstrk_flux(Romsship, variable, kind='eddyflux', \
     Vship = strip(Vship)
     vship, uship = rot_vec(Uship, Vship, angle=ang_tot, degrees=True)
     uship = -uship # Cross-track velocity (u) is positive to the RIGHT of the track.
+
+    if variable=='u':
+        shipvar = uship.copy()
+    elif variable=='v':
+        shipvar = vship.copy()
+    else:
+        shipvar = Romsship.ship_sample(variable, synop=synop, \
+                                       segwise_synop=segwise_synop, \
+                                       fix_dx=fix_dx, **kw)
 
     # Mask cells in the 'dx' array that are under the bottom.
     dx = shipvar.dx
@@ -99,6 +104,10 @@ def crosstrk_flux(Romsship, variable, kind='eddyflux', \
                 dzsegavg = dzseg.mean(axis=1)
                 uQmeann = np.sum(uQmeann*dzsegavg) # [u]*[Q]*m, transports per
                 uQeddyn = np.sum(uQeddyn*dzsegavg) # unit along-track length.
+                if normalize:
+                    havg = dzsegavg.sum()
+                    uQmeann = uQmeann/havg # [u]*[Q], along-track
+                    uQeddyn = uQeddyn/havg # averaged Q transports.
                 if m==n==0:
                     uQmean = uQmeann
                     uQeddy = uQeddyn
