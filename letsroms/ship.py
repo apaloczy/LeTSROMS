@@ -37,12 +37,14 @@ class RomsShip(object):
     ship track. The input 'ship_track' must be a 'letsroms.ShipTrack' instance.
     """
     def __init__(self, roms_fname, Shiptrack, verbose=True):
-        assert isinstance(Shiptrack, ShipTrack), "Input must be a 'letsroms.ShipTrack' instance"
+        # assert isinstance(Shiptrack, ShipTrack), "Input must be a 'letsroms.ShipTrack' instance" # FIXME
         iswaypt = [] # Flag the first and last points of a segment.
         tship = Shiptrack.trktimes.data
         xyship = Shiptrack.trkpts.data
         angship = Shiptrack.trkhdgs.data
         self.Shiptrack = Shiptrack # Attach the ShipTrack class.
+        if Shiptrack.nsegs==1:
+            tship = [tship]
         for ntrki in tship:
             iswpti = len(ntrki)*[0]
             iswpti[0], iswpti[-1] = 1, 1
@@ -50,15 +52,20 @@ class RomsShip(object):
         self._deg2rad = np.pi/180  # [rad/deg].
         self._m2km = 1e-3          # [km/m].
         self._cph2hz = 1/3600      # [Hz/cph].
-        self.iswaypt = np.bool8(self._burst(iswaypt))
-        xyship = self._burst(xyship)
-        self.tship = self._burst(tship)
+        if Shiptrack.nsegs==1:
+            self.iswaypt = np.bool8(iswaypt[0])
+            self.tship = np.array(tship)
+            self.angship = np.array(angship)
+        else:
+            self.iswaypt = np.bool8(self._burst(iswaypt))
+            xyship = self._burst(xyship)
+            self.tship = self._burst(tship)
+            self.angship = self._burst(angship)
         self.xship = np.array([xy.lon for xy in xyship])
         self.yship = np.array([xy.lat for xy in xyship])
         self._xship_rad = self.xship*self._deg2rad
         self._yship_rad = self.yship*self._deg2rad
         self.dship = xy2dist(self.xship, self.yship, datum='Sphere')
-        self.angship = self._burst(angship)
         self.nshp = self.tship.size
         self._ndig = len(str(self.nshp))
         self.dx = self.dship[1:] - self.dship[:-1] # [m].
@@ -109,8 +116,7 @@ class RomsShip(object):
         if verbose:
             print("Interpolating ROMS grid angle to ship track.")
         self.anggrdship = self.ship_sample('angle', interp_method='linear', \
-                                           synop=True, segwise_synop=True, \
-                                           cache=True, xarray_out=False, \
+                                           synop=False, xarray_out=False, \
                                            verbose=False).vship/self._deg2rad
 
     def _burst(self, arr):
@@ -268,13 +274,12 @@ class RomsShip(object):
 
     def ship_sample(self, varname, interp_method='linear', synop=False, \
                     segwise_synop=False, fix_dx=False, cache=True, \
-                    xarray_out=True, verbose=True, nprint=10):
+                    xarray_out=True, verbose=True, nprint=25):
         """
         Interpolate model 'varname' to ship track coordinates (x, y, t).
         Returns a 'ShipSample' object.
 
-        'interp_method' must be 'nearest',
-        'linear' or 'cubic'.
+        'interp_method' must be 'nearest', 'linear' or 'cubic'.
 
         If 'synop' is True (default False), the ship track is sampled
         instantaneously, depending on the value of 'segwise_synop'.
@@ -316,12 +321,20 @@ class RomsShip(object):
                 exec(cmd, loc_trmesh, locals())
 
         # Store indices of adjacent model time steps for the time of each sample.
-        self.idxt = []
+        tship_new = self.tship.copy()
+        ship_time_new = self.ship_time.copy()
+        idxt = []
         idxtl, idxtr = [], []
         if synop:
-            if segwise_synop: # Each TRANSECT of the track is instantaneous.
+            if segwise_synop: # Each INDIVIDUAL LINE of the track is instantaneous.
+                if verbose:
+                    print('')
+                    print("Sampling '%s' synoptically (each segment is instantaneous)"%varname.upper())
                 waypts_idxs = np.where(self.iswaypt)[0].tolist()
             else: # Each OCCUPATION of the track is instantaneous.
+                if verbose:
+                    print('')
+                    print("Sampling '%s' synoptically (each occupation is instantaneous)"%varname.upper())
                 ndelim = np.logical_and(self.xship==self.xship[0],
                                         self.yship==self.yship[0])
                 ndelim = np.where(ndelim)[0][:2].ptp() + 1
@@ -334,15 +347,18 @@ class RomsShip(object):
             waypts_idxs.reverse()
             while len(waypts_idxs)>0:
                 fsecl, fsecr = waypts_idxs.pop(), waypts_idxs.pop()
-                self.tship[fsecl:fsecr+1] = self.tship[fsecl]
-                self.ship_time[fsecl:fsecr+1] = self.ship_time[fsecl]
+                tship_new[fsecl:fsecr+1] = self.tship[fsecl]
+                ship_time_new[fsecl:fsecr+1] = self.ship_time[fsecl]
         else: # Non-synoptic sampling (i.e., ship-like, realistic).
+            if verbose:
+                print('')
+                print("Sampling %s non-synoptically (like a real ship)"%varname.upper())
             pass
 
-        for t0 in self.tship.tolist():
+        for t0 in tship_new.tolist():
             idl, idr = np.sort(near(self.troms, t0, npts=2, return_index=True)) # Make sure indices are increasing.
             if idl==idr: idr+=1 # Make sure indices are not repeated.
-            self.idxt.append((idl, idr))
+            idxt.append((idl, idr))
             idxtl.append(idl)
             idxtr.append(idr)
 
@@ -361,13 +377,14 @@ class RomsShip(object):
 
         if vroms.ndim>2:
             tl, tr = self.roms_time[idxtl], self.roms_time[idxtr]
-            print(tl.shape, tr.shape, self.ship_time.shape)
-            self.dt = np.abs(self.ship_time - tl)/(tr - tl) # Store time separations.
-        msgn=nprint
+            dt_new = np.abs(ship_time_new - tl)/(tr - tl) # Store time separations.
+        else:
+            dt_new = np.zeros(self.nshp)
+        msgn = nprint
         for n in range(self.nshp):
             if verbose and np.logical_or(msgn==nprint, n==self.nshp-1):
-                msg = (varname.upper(), str(n+1).zfill(self._ndig), str(self.nshp).zfill(self._ndig))
-                print('Ship-sampling %s (point %s of %s).'%msg)
+                msg = (str(n+1).zfill(self._ndig), str(self.nshp).zfill(self._ndig))
+                print('Interpolating point %s/%s'%msg)
                 msgn=0
             msgn+=1
             # Step 1: Find the time steps bounding the wanted time.
@@ -375,7 +392,7 @@ class RomsShip(object):
             if vroms.ndim>2:
                 var_tl = vroms[idxtl[n],:]
                 var_tr = vroms[idxtr[n],:]
-                tn, dtn = self.ship_time[n], self.dt[n]
+                tn, dtn = ship_time_new[n], dt_new[n]
             xn, yn = self._xship_rad[n], self._yship_rad[n]
             xn = np.array([xn, xn]) # Acoxambration (workaround) to avoid trmesh error.
             yn = np.array([yn, yn]) # Acoxambration (workaround) to avoid trmesh error.
@@ -394,7 +411,7 @@ class RomsShip(object):
                     wrkl, wrkr, z_wrkl, z_wrkr = self._interpxy(vartup, xn, yn, interpm, pointtype)
                     vship[nz, n] = wrkl + (wrkr - wrkl)*dtn # Linearly interpolate in time.
                     zvship[nz, n] = z_wrkl + (z_wrkr - z_wrkl)*dtn
-                self.zship = zvship
+                zship_aux = zvship
             elif vroms.ndim==3: # 2D time-dependent variables (x, y, t).
                 vartup = (var_tl.ravel(), var_tr.ravel())
                 wrkl, wrkr = self._interpxy(vartup, xn, yn, interpm, pointtype)
@@ -402,48 +419,57 @@ class RomsShip(object):
             elif vroms.ndim==1: # 2D static variables (x, y). Becomes 1D after applying ravel() a few lines above.
                 vship[n] = self._interpxy((vroms), xn, yn, interpm, pointtype)
 
-        if fix_dx and not hasattr(self, '_FIXED_DX'):
-            dxaux = self.dx[self._fguddx]
+        if fix_dx:
+            if not hasattr(self, '_FIXED_DX'):
+                print('FIXING DX:  if fix_dx and not hasattr(self, _FIXED_DX):')
+                self.dx = self.dx[self._fguddx]
+                self._FIXED_DX = True
+            consec_segment_indexm = self.Shiptrack.consec_segment_indexm.data
             self.dxr = np.array([])
             for ns in range(self.Shiptrack.nsegs):
-                fsegm = self.Shiptrack.segment_indexm.data==(ns+1)
-                dxseg = dxaux[fsegm]
+                nsp = ns + 1
+                fsegm = consec_segment_indexm==nsp
+                dxseg = self.dx[fsegm]
                 dxrseg = 0.5*(dxseg[1:] + dxseg[:-1])
-                dxrseg = np.concatenate((np.array([dxseg[0]]), dxrseg, np.array([dxseg[-1]])))
+                dxrseg = np.concatenate((np.array([dxseg[0]])*0.5, dxrseg))
                 self.dxr = np.append(self.dxr, dxrseg)
-
-            vship = 0.5*(vship[...,1:]*self.dxr[...,1:] + vship[...,:-1]*self.dxr[...,:-1])/self.dx
+            self.dxr = np.tile(self.dxr, (self.Shiptrack.nrepeat))
             if vship.ndim==1:
-                vship = vship[self._fguddx]
+                vship_aux = vship[self._fguddx]
+                print(vship.shape, vship_aux.shape, self.dxr.shape, self.dx.shape)
+                vship_aux = 0.5*(vship_aux[1:]*self.dxr[1:] + vship_aux[:-1]*self.dxr[:-1])/self.dx[1:]
             elif vship.ndim==2:
-                vship = vship[self._fguddx[np.newaxis,:]]
-            self.dx = self.dx[self._fguddx]
-            self._FIXED_DX = True
+                vship_aux = np.ones((self.N, 1))*np.nan
+                for col in range(self.nshp-1):
+                    if self._fguddx[col]:
+                        vship_aux = np.hstack((vship_aux, vship[:,col][:,np.newaxis]))
+                    else:
+                        continue
+            vship = vship_aux.copy()
 
         # NOTE: Use pandas.to_datetime() to make time axis for xarray.
         # datetime.datetime() causes bugs in xarray.DataArray for
         # non-1D variables.
         if xarray_out:
-            tship_aux = to_datetime(self.tship)
             # Convert interpolated variables to xarray.
             if vship.ndim==2: # 4D variables (t,z,y,x) become time series of profiles (z,t).
                 dimsd = {'z':self.N, 'time':self.nshp}
                 dshp = np.tile(self.dship[np.newaxis,:], (self.N, 1))
                 yshp = np.tile(self.yship[np.newaxis,:], (self.N, 1))
                 xshp = np.tile(self.xship[np.newaxis,:], (self.N, 1))
-                coordsd = {'time':tship_aux,
-                           'depth':(['z', 'time'], self.zship),
+                coordsd = {'time':tship_new,
+                           'depth':(['z', 'time'], zship_aux),
                            'ship_dist':(['z', 'time'], dshp),
                            'ship_lat':(['z', 'time'], yshp),
                            'ship_lon':(['z', 'time'], xshp)}
             elif vship.ndim==1: # 3D variables (t,y,x) become time series (t).
                 dimsd = {'time':self.nshp}
-                coordsd = {'time':tship_aux,
+                coordsd = {'time':tship_new,
                            'ship_dist':(['time'], self.dship),
                            'ship_lat':(['time'], self.yship),
                            'ship_lon':(['time'], self.xship)}
 
-            # Make sure variable units, time units and calendar type are consistent.
+            # Make sure variable units, time units and calendar types are consistent.
             try:
                 varunits = self.varsdict[varname].units
             except AttributeError:
@@ -456,22 +482,24 @@ class RomsShip(object):
                                      name=varname.upper(), attrs=attrsd)
             except ValueError:
                 print("Error converting variable '%s' to xarray.DataArray. Returning tuple of numpy.ndarray instead."%varname)
-                if vship.ndim==2: Vship = (self.tship, self.zship, self.dship, \
+                if vship.ndim==2: Vship = (tship_new, zship_aux, self.dship, \
                                            self.yship, self.xship, vship)
-                elif vship.ndim==1: Vship = (self.tship, self.dship, \
+                elif vship.ndim==1: Vship = (tship_new, self.dship, \
                                              self.yship, self.xship, vship)
         else:
-            if vship.ndim==2: Vship = (self.tship, self.zship, self.dship, \
+            if vship.ndim==2: Vship = (tship_new, zship_aux, self.dship, \
                                        self.yship, self.xship, vship)
-            elif vship.ndim==1: Vship = (self.tship, self.dship, self.yship, \
+            elif vship.ndim==1: Vship = (tship_new, self.dship, self.yship, \
                                          self.xship, vship)
 
-        return ShipSample(self, Vship, fix_dx=fix_dx)
+        return ShipSample(self, Vship, ship_time_new, dt_new, fix_dx=fix_dx)
 
 
 class ShipSample(RomsShip):
-    def __init__(self, Romsship, Vship, fix_dx=False):
+    def __init__(self, Romsship, Vship, Tshipdate, dtship, fix_dx=False):
         self.Romsship = Romsship # Attach parent class.
+        self.ship_time = Tshipdate
+        self.dt = dtship
         self.dx = Romsship.dx
         self._interpm = self.Romsship._interpm
         Romsship.__delattr__('_interpm')
@@ -512,9 +540,11 @@ class ShipSample(RomsShip):
             self.dims = {'z':Romsship.N, 'time':Romsship.nshp}
             self.dz = self._strip(self.zship[1:,:] - self.zship[:-1,:])
             self.dx = np.tile(self.dx[np.newaxis,:], (Romsship.N-1, 1))
-            self.dzm = conform(self.dz, stride='right') # [m].
+            dzm = conform(self.dz, stride='right') # [m].
             if fix_dx:
-                self.dzm = self.dzm[:,self.Romsship._fguddx]
+                self.dzm = dzm[:,self.Romsship._fguddx]
+            else:
+                self.dzm = dzm
             self.dA = self.dx*self.dzm # [m2].
 
     def add_noise(self, std, mean=0, kind='gaussian', verbose=True):
@@ -657,10 +687,8 @@ class ShipTrack(object):
                                       # as a fraction of the segment.
                 nn = int(1/dfrac) - 1 # Number of points that fit in this
                                       # segment (excluding waypoints A and B).
-                if nn==-1:
-                    raise ShipTrackError('Segment from %s to %s is not long \
-                                         enough to accomodate any ship sampling \
-                                         points.'%(wptA.toStr(), wptB.toStr()))
+                if nn<1:
+                    raise ShipTrackError('Segment [%s ----> %s] is too short to accomodate any ship sampling points.'%(wptA.toStr(), wptB.toStr()))
                 if verbose:
                     print("Segment %d/%d:  %s --> %s (%.3f km | %.2f h)"\
                           %(n+1, self.nsegs, wptA.toStr(), wptB.toStr(), \
@@ -713,9 +741,14 @@ class ShipTrack(object):
         attrsoccm = dict(long_name='Which occupation each midpoint between two adjacent sampled points belongs to')
         attrsseg = dict(long_name='Which segment each sampled point belongs to')
         attrssegm = dict(long_name='Which segment each midpoint between two adjacent sampled points belongs to')
-        assert len(trkpts)==len(trktimes)
+        attrscscseg = dict(long_name='Consecutive line count each sampled point belongs to')
+        attrscscsegm = dict(long_name='Consecutive line count each midpoint between two adjacent sampled points belongs to')
+        assert len(trkpts)==len(trktimes)==len(trkhdgs)
         dim = 'point index'
-
+        if len(trkpts)==1:
+            trkpts = trkpts[0]
+            trktimes = trktimes[0]
+            trkhdgs = trkhdgs[0]
         self.trkpts = xr.Variable(data=trkpts, dims=dim, attrs=attrspts)
         self.trktimes = xr.Variable(data=trktimes, dims=dim, attrs=attrstimes)
         self.trkhdgs = xr.Variable(data=trkhdgs, dims=dim, attrs=attrshdgs)
@@ -728,9 +761,22 @@ class ShipTrack(object):
         self.segment_indexm = xr.Variable(data=np.int32(segment_indexm), \
                                           dims=dim, attrs=attrssegm)
 
+        occidx = self.occupation_index.data
+        segidx = self.segment_index.data
+        consec_segment_index = segidx + self.nsegs*(occidx - 1)
+        occidxm = self.occupation_indexm.data
+        segidxm = self.segment_indexm.data
+        consec_segment_indexm = segidxm + self.nsegs*(occidxm - 1)
+
+        self.consec_segment_index = xr.Variable(data=np.int32(consec_segment_index), \
+                                                dims=dim, attrs=attrscscseg)
+        self.consec_segment_indexm = xr.Variable(data=np.int32(consec_segment_indexm), \
+                                                 dims=dim, attrs=attrscscsegm)
+
         segment_index = np.arange(self.nsegs*self.nrepeat) + 1
         seg_coords = {'segment index':segment_index}
         seg_dims = 'segment index'
+
         self.seg_lengths = xr.DataArray(seg_lengths, coords=seg_coords,
                                         dims=seg_dims, name='Length of each \
                                         segment of the track')

@@ -103,12 +103,14 @@ def mk_basemap(bbox, topog=None, topog_style='contour', which_isobs=3, \
     ax.coastlines(resolution, zorder=3)
     if isinstance(topog, tuple):        # Plot topography passed as a
         lontopo, lattopo, htopo = topog # (lon, lat, h) tuple.
+    else:
+        raise IOError("'topog' must be a (lon, lat, topo) tuple or None.")
 
-    if topog:
+    if topog is not None:
         if topog_style=='contour' or topog_style=='both':
             if np.isscalar(which_isobs): # Guess isobaths if not provided.
                 hmi, hma = np.ceil(htopo.min()), np.floor(htopo.max())
-                which_isobs = np.linspace(hmi, hma, num=int(which_isobs))
+                which_isobs = np.linspace(hmi, hma, num=int(which_isobs)).tolist()
             elif isseq(which_isobs):
                 which_isobs = list(which_isobs)
             cc = ax.contour(lontopo, lattopo, htopo, levels=which_isobs, \
@@ -168,8 +170,10 @@ def strip(obj):
 
 
 def conform(arr, stride='right-up'):
+    if not stride:
+        return arr
     arr = np.array(arr)
-    if stride=='right-up':
+    if stride=='right-up' or stride=='up':
         assert arr.ndim==2, "Array is not 2D."
 
     if arr.ndim==1:

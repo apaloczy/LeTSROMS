@@ -21,7 +21,7 @@ def chk_synopticity(varship, varsynop, ship_speed, sampling_period, contour_leve
     """
     isxr = varship.fromDataArray
     assert varship.ndim==varsynop.ndim, "Synoptic and ship-sampled variables dimensions mismatch."
-    assert varship.name==varsynop.name, "Synoptic and ship-sampled fields are not the same variable."
+    # assert varship.name==varsynop.name, "Synoptic and ship-sampled fields are not the same variable."
     varname = varship.name
     varunits = varship.units
     shipvar = varship.vship
@@ -43,7 +43,10 @@ def chk_synopticity(varship, varsynop, ship_speed, sampling_period, contour_leve
         fig, ax = plt.subplots(nrows=4, sharex=True)
         ax1, ax2, ax3, ax4 = ax
 
+        print(x.shape, z.shape)
         x, z = [np.array(arr) for arr in np.broadcast_arrays(x, z)]
+        print(x.shape, z.shape)
+        print(shipvar, synopvar, diffvar)
         cs1 = ax1.contourf(x, z, shipvar, contour_levels, shading='flat')
         cs2 = ax2.contourf(x, z, synopvar, contour_levels, shading='flat')
         cs3 = ax3.contourf(x, z, diffvar, contour_levels, vmin=diff_lo, vmax=diff_hi, cmap=plt.cm.seismic, shading='flat')
@@ -64,6 +67,7 @@ def chk_synopticity(varship, varsynop, ship_speed, sampling_period, contour_leve
     elif varship.ndim==1:
         fig, ax = plt.subplots(sharex=True, nrows=2)
         ax1, ax2 = ax
+        print(x.shape, shipvar.shape, synopvar.shape, diffvar.shape)
         ax1.plot(x, shipvar, 'grey', marker='o', ms=3, label='ship')
         ax1.plot(x, synopvar, 'k', marker='o', ms=3, label='synoptic')
         ax2.plot(x, diffvar, 'k', marker='o', ms=3)
