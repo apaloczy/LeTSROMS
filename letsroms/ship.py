@@ -273,8 +273,8 @@ class RomsShip(object):
 
 
     def ship_sample(self, varname, interp_method='linear', synop=False, \
-                    segwise_synop=False, fix_dx=False, cache=True, \
-                    xarray_out=True, verbose=True, nprint=25):
+                    segwise_synop=False, how_synop='center', fix_dx=False, \
+                    cache=True, xarray_out=True, verbose=True, nprint=25):
         """
         Interpolate model 'varname' to ship track coordinates (x, y, t).
         Returns a 'ShipSample' object.
@@ -347,8 +347,15 @@ class RomsShip(object):
             waypts_idxs.reverse()
             while len(waypts_idxs)>0:
                 fsecl, fsecr = waypts_idxs.pop(), waypts_idxs.pop()
-                tship_new[fsecl:fsecr+1] = self.tship[fsecl]
-                ship_time_new[fsecl:fsecr+1] = self.ship_time[fsecl]
+                if how_synop=='first':
+                    fsec = fsecl
+                elif how_synop=='center':
+                    fsec = (fsecl + fsecr)//2
+                elif how_synop=='last':
+                    fsec = fsecr
+                print(fsecl, fsecr, fsec)
+                tship_new[fsecl:fsecr+1] = self.tship[fsec]
+                ship_time_new[fsecl:fsecr+1] = self.ship_time[fsec]
         else: # Non-synoptic sampling (i.e., ship-like, realistic).
             if verbose:
                 print('')
