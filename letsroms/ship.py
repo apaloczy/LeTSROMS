@@ -119,6 +119,16 @@ class RomsShip(object):
                                            synop=False, xarray_out=False, \
                                            verbose=False).vship/self._deg2rad
 
+
+    def __add__(self, other):
+        assertstr = "objects being added must be 'letsroms.RomsShip' or 'letsroms.RomsFleet' instances"
+        assert isinstance(other, RomsShip) or isinstance(other, RomsFleet), assertstr
+        if isinstance(other, RomsShip): # The 2 ships being added are the first ones.
+            return RomsFleet(self, other)
+        elif isinstance(other, RomsFleet): # (this ship) + (a N-ships fleet) ...
+            return other + self            # = [a (N+1)-ships fleet].
+
+
     def _burst(self, arr):
         """
         Convert an array of lists of objects
@@ -595,6 +605,47 @@ class ShipSample(RomsShip):
             pass
 
         return obj
+
+
+class RomsFleet(RomsShip):
+    """
+    USAGE
+    -----
+    """
+    def __init__(self, Romsship1, Romsship2):
+        self.shipsdict = dict(ship1=Romsship1, ship2=Romsship2)
+        self.ship1 = Romsship1
+        self.ship2 = Romsship2
+        self.nships = 2
+
+
+    def __add__(self, other):
+        assertstr = "objects being added must be 'letsroms.RomsShip' or 'letsroms.RomsFleet' instances"
+        assert isinstance(other, RomsShip) or isinstance(other, RomsFleet), assertstr
+        if isinstance(other, RomsShip):
+            self.nships+=1
+            shipnnum = 'ship' + str(self.nships)
+            setattr(self, shipnnum, other)
+            self.shipsdict.update({shipnnum:other})
+            return self
+        elif isinstance(other, RomsFleet):
+            for shipk in other.shipsdict.keys():
+                shipv = other.shipsdict[shipk]
+                self.nships+=1
+                shipnnum = 'ship' + str(self.nships)
+                setattr(self, shipnnum, shipv)
+                self.shipsdict.update({shipnnum:shipv})
+            return self
+
+
+    # def __init__(self, Romsship, Vship, Tshipdate, dtship, fix_dx=False):
+    #     self.Romsship = Romsship # Attach parent class.
+    #     self.ship_time = Tshipdate
+    #     self.dt = dtship
+    #     self.dx = Romsship.dx
+    #     self._interpm = self.Romsship._interpm
+    #     Romsship.__delattr__('_interpm')
+
 
 class ShipTrack(object):
     """
