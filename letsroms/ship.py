@@ -353,13 +353,12 @@ class RomsShip(object):
                     fsec = (fsecl + fsecr)//2
                 elif how_synop=='last':
                     fsec = fsecr
-                print(fsecl, fsecr, fsec)
                 tship_new[fsecl:fsecr+1] = self.tship[fsec]
                 ship_time_new[fsecl:fsecr+1] = self.ship_time[fsec]
         else: # Non-synoptic sampling (i.e., ship-like, realistic).
             if verbose:
                 print('')
-                print("Sampling %s non-synoptically (like a real ship)"%varname.upper())
+                print("Sampling '%s' non-synoptically (like a real ship)"%varname.upper())
             pass
 
         for t0 in tship_new.tolist():

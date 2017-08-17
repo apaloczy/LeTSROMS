@@ -19,7 +19,10 @@ from .utils import blkwavg, strip, conform
 
 def crosstrk_flux(Romsship, variable, kind='eddyflux', normalize=True, \
                   synop=False, segwise_synop=False, interp_method='linear', \
-                  cache=True, xarray_out=True, verbose=True, **kw):
+                  noise_amp=0, noise_bias=0, noise_type='gaussian', \
+                  uvnoise_amp=0, uvnoise_bias=0, uvnoise_type='gaussian', \
+                  uvcache=False, wipe_uvcache=True, xarray_out=True, \
+                  verbose=True, **kw):
     """
     Calculate the cross-track mean (u_mean*Q_mean) eddy flux (u'*Q') for
     a variable "Q" sampled from ROMS output. All kwargs are
@@ -46,17 +49,37 @@ def crosstrk_flux(Romsship, variable, kind='eddyflux', normalize=True, \
     # first from grid coordinates to east-west coordinates and then to track \
     # coordinates.
     ang_tot = Romsship.angship - Romsship.anggrdship # [degrees].
-    Uship = Romsship.ship_sample('u', synop=synop, \
-                                 segwise_synop=segwise_synop, \
-                                 fix_dx=fix_dx, **kw)
-    Vship = Romsship.ship_sample('v', synop=synop, \
-                                 segwise_synop=segwise_synop, \
-                                 fix_dx=fix_dx, **kw)
+    if uvcache and not wipe_uvcache: # CAUTION USING THIS OPTION. Don't get confused with
+        if hasattr(Romsship, '_CACHED_UVSYNOP'):  # old (Uship, Vship) added to the 'Romsship' object.
+            uship = Romsship.u_crosstrk.copy()
+            vship = Romsship.v_alongtrk.copy()
+        else:
+            pass
 
-    Uship = strip(Uship)
-    Vship = strip(Vship)
-    vship, uship = rot_vec(Uship, Vship, angle=ang_tot, degrees=True)
-    uship = -uship # Cross-track velocity (u) is positive to the RIGHT of the track.
+    if wipe_uvcache or not uvcache or np.logical_and(uvcache, not hasattr(Romsship, '_CACHED_UVSYNOP')):
+        Uship = Romsship.ship_sample('u', synop=synop, \
+                                     segwise_synop=segwise_synop, \
+                                     fix_dx=fix_dx, **kw)
+        Vship = Romsship.ship_sample('v', synop=synop, \
+                                     segwise_synop=segwise_synop, \
+                                     fix_dx=fix_dx, **kw)
+
+        Uship = strip(Uship)
+        Vship = strip(Vship)
+        vship, uship = rot_vec(Uship, Vship, angle=ang_tot, degrees=True)
+        uship = -uship # Cross-track velocity (u) is positive to the RIGHT of the track.
+
+        if uvnoise_amp>0:
+            Uship.add_noise(uvnoise_amp, mean=uvnoise_bias, kind=uvnoise_type, verbose=verbose)
+            Vship.add_noise(uvnoise_amp, mean=uvnoise_bias, kind=uvnoise_type, verbose=verbose)
+
+        if uvcache:
+            Romsship.u_crosstrk = uship.copy()
+            Romsship.v_alongtrk = vship.copy()
+            Romsship._CACHED_UVSYNOP = synop
+        else:
+            if hasattr(Romsship, '_CACHED_UVSYNOP'):
+                Romsship.__delattr__('_CACHED_UVSYNOP')
 
     if variable=='u':
         shipvar = uship.copy()
@@ -66,6 +89,9 @@ def crosstrk_flux(Romsship, variable, kind='eddyflux', normalize=True, \
         shipvar = Romsship.ship_sample(variable, synop=synop, \
                                        segwise_synop=segwise_synop, \
                                        fix_dx=fix_dx, **kw)
+
+    if noise_amp>0:
+        shipvar.add_noise(noise_amp, mean=noise_bias, kind=noise_type, verbose=verbose)
 
     # Mask cells in the 'dx' array that are under the bottom.
     dx = shipvar.dx
