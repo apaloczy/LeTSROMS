@@ -226,7 +226,8 @@ class RomsShip(object):
         return np.array(intarr)
 
 
-    def plt_trkmap(self, topog='model', topog_style='contour', which_isobs=3, \
+    def plt_trkmap(self, ax=None, \
+                   topog='model', topog_style='contour', which_isobs=3, \
                    resolution='50m', borders=True, counties=False, rivers=True, \
                    cmap=deep, ncf=100, trkcolor='r', trkmarker='o', trkms=5, \
                    trkmfc='r', trkmec='r', manual_clabel=False, \
@@ -234,6 +235,11 @@ class RomsShip(object):
         """
         Plot topography map with the ship track overlaid.
         """
+        if not ax:
+            inax = False
+        else:
+            inax = True
+
         if topog: # Skip if don't want any topography.
             if topog=='model': # Plot model topography.
                 topog = self.lonr, self.latr, self.h
@@ -250,18 +256,21 @@ class RomsShip(object):
             else:
                 which_isobs = 0
 
-        # Plot base map.
-        kwm = dict(topog=topog, which_isobs=which_isobs, \
-                   topog_style=topog_style, resolution=resolution, \
-                   borders=borders, counties=counties, rivers=rivers, \
-                   cmap=cmap, ncf=ncf, manual_clabel=manual_clabel, crs=crs)
-        fig, ax = mk_basemap(self.bbox, **kwm)
+        # Plot base map and overlay ship track.
+        if not inax:
+            kwm = dict(topog=topog, which_isobs=which_isobs, \
+                       topog_style=topog_style, resolution=resolution, \
+                       borders=borders, counties=counties, rivers=rivers, \
+                       cmap=cmap, ncf=ncf, manual_clabel=manual_clabel, crs=crs)
+            fig, ax = mk_basemap(self.bbox, **kwm)
 
-        # Plot ship track.
         ax.plot(self.xship, self.yship, linestyle='-', color=trkcolor, \
                 marker=trkmarker, ms=trkms, mfc=trkmfc, mec=trkmec, zorder=4)
 
-        return fig, ax
+        if not inax:
+            return fig, ax
+        else:
+            return None
 
 
     def plt_trkxyt(self):
