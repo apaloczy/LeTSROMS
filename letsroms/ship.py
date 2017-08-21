@@ -292,7 +292,7 @@ class RomsShip(object):
 
 
     def ship_sample(self, varname, interp_method='linear', synop=False, \
-                    segwise_synop=False, how_synop='center', fix_dx=False, \
+                    segwise_synop=False, how_synop='middle', fix_dx=False, \
                     cache=True, xarray_out=True, verbose=True, nprint=25):
         """
         Interpolate model 'varname' to ship track coordinates (x, y, t).
@@ -345,8 +345,8 @@ class RomsShip(object):
         idxt = []
         idxtl, idxtr = [], []
         if synop:
-            if segwise_synop: # Each INDIVIDUAL LINE of the track is instantaneous.
-                if verbose:
+            if segwise_synop: # FIXME Each INDIVIDUAL LINE of the track is instantaneous.
+                if verbose:   # Fix it analogously to the case below (instantaneous occupations).
                     print('')
                     print("Sampling '%s' synoptically (each segment is instantaneous)"%varname.upper())
                 waypts_idxs = np.where(self.iswaypt)[0].tolist()
@@ -354,23 +354,21 @@ class RomsShip(object):
                 if verbose:
                     print('')
                     print("Sampling '%s' synoptically (each occupation is instantaneous)"%varname.upper())
-                ndelim = np.logical_and(self.xship==self.xship[0],
-                                        self.yship==self.yship[0])
-                ndelim = np.where(ndelim)[0][:2].ptp() + 1
-                fwaypts = np.where(self.iswaypt)[0]
-                wptdl = np.arange(0, self.nshp+1, ndelim)
-                wptdl[1:] = wptdl[1:] - 1
-                wptdr = wptdl[1:-1] + 1
-                waypts_idxs = np.concatenate((wptdl, wptdr)).tolist()
-            waypts_idxs.sort()
-            waypts_idxs.reverse()
-            while len(waypts_idxs)>0:
-                fsecl, fsecr = waypts_idxs.pop(), waypts_idxs.pop()
-                if how_synop=='first':
+                noccs = list(np.arange(self.Shiptrack.nrepeat) + 1)
+                wptdl, wptdr = [], []
+                for nocc in noccs:
+                    fdelim = np.where(self.Shiptrack.occupation_index.data==nocc)[0]
+                    wptdl.append(fdelim[0])
+                    wptdr.append(fdelim[-1])
+            wptdl.reverse()
+            wptdr.reverse()
+            while len(wptdl)>0:
+                fsecl, fsecr = wptdl.pop(), wptdr.pop()
+                if how_synop=='start':
                     fsec = fsecl
-                elif how_synop=='center':
+                elif how_synop=='middle':
                     fsec = (fsecl + fsecr)//2
-                elif how_synop=='last':
+                elif how_synop=='end':
                     fsec = fsecr
                 tship_new[fsecl:fsecr+1] = self.tship[fsec]
                 ship_time_new[fsecl:fsecr+1] = self.ship_time[fsec]
@@ -622,6 +620,21 @@ class RomsFleet(RomsShip):
     -----
     """
     def __init__(self, Romsship1, Romsship2):
+        assert(np.all(Romsship1.lonr==Romsship2.lonr)) # TODO: Implement this without having to transfer
+        assert(np.all(Romsship1.lonu==Romsship2.lonu)) # these attrs from the RomsShip objects.
+        assert(np.all(Romsship1.lonv==Romsship2.lonv))
+        assert(np.all(Romsship1.lonp==Romsship2.lonp))
+        assert(np.all(Romsship1.latr==Romsship2.latr)) # TODO: Implement this without having to transfer
+        assert(np.all(Romsship1.latu==Romsship2.latu)) # these attrs from the RomsShip objects.
+        assert(np.all(Romsship1.latv==Romsship2.latv))
+        assert(np.all(Romsship1.latp==Romsship2.latp))
+        assert(np.all(Romsship1.h==Romsship2.h))
+        self.lonr, self.latr = Romsship1.lonr, Romsship1.latr
+        self.lonu, self.latu = Romsship1.lonu, Romsship1.latu
+        self.lonv, self.latv = Romsship1.lonv, Romsship1.latv
+        self.lonp, self.latp = Romsship1.lonp, Romsship1.latp
+        self.h = Romsship1.h
+        self.bbox = Romsship1.bbox
         self.shipsdict = dict(ship1=Romsship1, ship2=Romsship2)
         self.ship1 = Romsship1
         self.ship2 = Romsship2
@@ -647,13 +660,57 @@ class RomsFleet(RomsShip):
             return self
 
 
-    # def __init__(self, Romsship, Vship, Tshipdate, dtship, fix_dx=False):
-    #     self.Romsship = Romsship # Attach parent class.
-    #     self.ship_time = Tshipdate
-    #     self.dt = dtship
-    #     self.dx = Romsship.dx
-    #     self._interpm = self.Romsship._interpm
-    #     Romsship.__delattr__('_interpm')
+    def plt_trkxyt():
+        return None
+
+
+    def plt_trkmap(self, ax=None, \
+                   topog='model', topog_style='contour', which_isobs=3, \
+                   resolution='50m', borders=True, counties=False, rivers=True, \
+                   cmap=deep, ncf=100, trkcolor='r', trkmarker='o', trkms=5, \
+                   trkmfc='r', trkmec='r', manual_clabel=False, \
+                   crs=ccrs.PlateCarree()):
+        """
+        Plot topography map with the tracks of all ships overlaid.
+        """
+        if not ax:
+            inax = False
+        else:
+            inax = True
+
+        if topog: # Skip if don't want any topography.
+            if topog=='model': # Plot model topography.
+                topog = self.lonr, self.latr, self.h
+                h = self.h
+            elif isinstance(topog, tuple): # Plot other topography, passed
+                h = topog[2]               # as a (lon, lat, h) tuple.
+
+            if which_isobs:
+                if np.isscalar(which_isobs): # Guess isobaths if not provided.
+                    hmi, hma = np.ceil(h.min()), np.floor(h.max())
+                    which_isobs = np.linspace(hmi, hma, num=int(which_isobs))
+                elif isseq(which_isobs):
+                    which_isobs = list(which_isobs)
+            else:
+                which_isobs = 0
+
+        # Plot base map and overlay ship track.
+        if not inax:
+            kwm = dict(topog=topog, which_isobs=which_isobs, \
+                       topog_style=topog_style, resolution=resolution, \
+                       borders=borders, counties=counties, rivers=rivers, \
+                       cmap=cmap, ncf=ncf, manual_clabel=manual_clabel, crs=crs)
+            fig, ax = mk_basemap(self.bbox, **kwm)
+
+        for shipk in self.shipsdict.keys():
+            shipv = self.shipsdict[shipk]
+            ax.plot(shipv.xship, shipv.yship, linestyle='-', color=trkcolor, \
+                    marker=trkmarker, ms=trkms, mfc=trkmfc, mec=trkmec, zorder=4)
+
+        if not inax:
+            return fig, ax
+        else:
+            return None
 
 
 class ShipTrack(object):

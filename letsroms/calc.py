@@ -64,14 +64,14 @@ def crosstrk_flux(Romsship, variable, kind='eddyflux', normalize=True, \
                                      segwise_synop=segwise_synop, \
                                      fix_dx=fix_dx, **kw)
 
+        if uvnoise_amp>0:
+            Uship.add_noise(uvnoise_amp, mean=uvnoise_bias, kind=uvnoise_type)
+            Vship.add_noise(uvnoise_amp, mean=uvnoise_bias, kind=uvnoise_type)
+
         Uship = strip(Uship)
         Vship = strip(Vship)
         vship, uship = rot_vec(Uship, Vship, angle=ang_tot, degrees=True)
         uship = -uship # Cross-track velocity (u) is positive to the RIGHT of the track.
-
-        if uvnoise_amp>0:
-            Uship.add_noise(uvnoise_amp, mean=uvnoise_bias, kind=uvnoise_type)
-            Vship.add_noise(uvnoise_amp, mean=uvnoise_bias, kind=uvnoise_type)
 
         if uvcache:
             Romsship.u_crosstrk = uship.copy()
@@ -89,13 +89,16 @@ def crosstrk_flux(Romsship, variable, kind='eddyflux', normalize=True, \
         shipvar = Romsship.ship_sample(variable, synop=synop, \
                                        segwise_synop=segwise_synop, \
                                        fix_dx=fix_dx, **kw)
-
     if noise_amp>0:
         shipvar.add_noise(noise_amp, mean=noise_bias, kind=noise_type)
 
     # Mask cells in the 'dx' array that are under the bottom.
-    dx = shipvar.dx
+    # try:
+    dx = Romsship.dx
+    dx = np.tile(dx[np.newaxis,:], (Romsship.N-1, 1))
     dzm = shipvar.dzm # 'dz' at the points in between ship samples.
+    # except:
+    #     pass
     shipvar = strip(shipvar)
 
     Nm = Romsship.N - 1
