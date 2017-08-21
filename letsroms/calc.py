@@ -93,13 +93,10 @@ def crosstrk_flux(Romsship, variable, kind='eddyflux', normalize=True, \
         shipvar.add_noise(noise_amp, mean=noise_bias, kind=noise_type)
 
     # Mask cells in the 'dx' array that are under the bottom.
-    # try:
+    shipvar = strip(shipvar)
     dx = Romsship.dx
     dx = np.tile(dx[np.newaxis,:], (Romsship.N-1, 1))
-    dzm = shipvar.dzm # 'dz' at the points in between ship samples.
-    # except:
-    #     pass
-    shipvar = strip(shipvar)
+    dzm = Romsship.dzm # 'dz' at the points in between ship samples.
 
     Nm = Romsship.N - 1
 

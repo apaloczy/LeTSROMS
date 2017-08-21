@@ -568,6 +568,7 @@ class ShipSample(RomsShip):
                 self.dzm = dzm[:,self.Romsship._fguddx]
             else:
                 self.dzm = dzm
+            Romsship.dzm = self.dzm.copy() # Keep 'dzm' also in Romsship.
             self.dA = self.dx*self.dzm # [m2].
 
     def add_noise(self, std, mean=0, kind='gaussian', verbose=True):
