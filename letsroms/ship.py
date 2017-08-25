@@ -6,7 +6,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from datetime import datetime, timedelta
-from pandas import to_datetime
+from pandas import to_datetime, Timestamp
 import xarray as xr
 from netCDF4 import Dataset, num2date, date2num
 from ap_tools.utils import xy2dist, near, fmt_isobath
@@ -39,11 +39,13 @@ class RomsShip(object):
     def __init__(self, roms_fname, Shiptrack, verbose=True):
         # assert isinstance(Shiptrack, ShipTrack), "Input must be a 'letsroms.ShipTrack' instance" # FIXME
         iswaypt = [] # Flag the first and last points of a segment.
+        # print(type(Shiptrack.trktimes))
         tship = Shiptrack.trktimes.data
+        # print(tship)
         xyship = Shiptrack.trkpts.data
         angship = Shiptrack.trkhdgs.data
         self.Shiptrack = Shiptrack # Attach the ShipTrack class.
-        if Shiptrack.nsegs==1:
+        if Shiptrack.nsegs_unique==1:
             tship = [tship]
         for ntrki in tship:
             iswpti = len(ntrki)*[0]
@@ -52,7 +54,8 @@ class RomsShip(object):
         self._deg2rad = np.pi/180  # [rad/deg].
         self._m2km = 1e-3          # [km/m].
         self._cph2hz = 1/3600      # [Hz/cph].
-        if Shiptrack.nsegs==1:
+        # print(type(tship))
+        if Shiptrack.nsegs_unique==1:
             self.iswaypt = np.bool8(iswaypt[0])
             self.tship = np.array(tship)
             self.angship = np.array(angship)
@@ -80,7 +83,13 @@ class RomsShip(object):
         self.time_units = self.troms.units
         self.calendar_type = self.troms.calendar
         self.troms = num2date(self.troms[:], units=self.time_units, calendar=self.calendar_type)
-        self.ship_time = date2num(self.tship, units=self.time_units, calendar=self.calendar_type)
+        if type(self.tship)==datetime:
+            self.ship_time = date2num(self.tship, units=self.time_units, calendar=self.calendar_type)
+        else:
+            if self.Shiptrack.nsegs_unique==1:
+                self.tship = self.tship[0]
+                self.tship = np.array([tsh.astype('M8[ms]').astype('O') for tsh in self.tship])
+            self.ship_time = date2num(self.tship, units=self.time_units, calendar=self.calendar_type)
         self.lonr = self.varsdict['lon_rho'][:]
         self.latr = self.varsdict['lat_rho'][:]
         self.lonu = self.varsdict['lon_u'][:]
@@ -459,7 +468,6 @@ class RomsShip(object):
             self.dxr = np.tile(self.dxr, (self.Shiptrack.nrepeat))
             if vship.ndim==1:
                 vship_aux = vship[self._fguddx]
-                print(vship.shape, vship_aux.shape, self.dxr.shape, self.dx.shape)
                 vship_aux = 0.5*(vship_aux[1:]*self.dxr[1:] + vship_aux[:-1]*self.dxr[:-1])/self.dx[1:]
             elif vship.ndim==2:
                 vship_aux = np.ones((self.N, 1))*np.nan
@@ -779,6 +787,14 @@ class ShipTrack(object):
         self.nrepeat = nrepeat
         self.nwaypts = lons.size
         self.nsegs = self.nwaypts - 1
+        latlons = [LatLon(lo, la) for lo, la in zip(lons, lats)]
+        self.latlons = np.array(latlons)
+        nwaypts_repeated = 0
+        while(len(latlons)>0):
+            latloni = latlons.pop()
+            nwaypts_repeated += int(np.sum([latlonj==latloni for latlonj in latlons]))
+        self.nwaypts_unique = self.nwaypts - nwaypts_repeated
+        self.nsegs_unique = self.nwaypts_unique - 1
         shipspd = shipspd*1852/3600 # kn to m/s.
         sampfreq = sampfreq/3600    # measurements/h to measurements/s.
         sampdt = 1/sampfreq         # Time between adjacent measurements [s].
@@ -820,7 +836,6 @@ class ShipTrack(object):
 
                 trkptsi = [wptA.intermediateTo(wptB, dfrac*ni) for ni in range(nn)]
                 trktimesi = [trktimesi + timedelta(sampdt*ni/86400) for ni in range(nn)]
-
                 # Fix actual start time of next segment by accounting for the
                 # time to cover the distance between last sample point and wptB.
                 ttransit = trkptsi[-1].distanceTo(wptB)/shipspd
@@ -873,6 +888,9 @@ class ShipTrack(object):
             trkpts = trkpts[0]
             trktimes = trktimes[0]
             trkhdgs = trkhdgs[0]
+        trkpts = np.array(trkpts).flatten()
+        trktimes = np.array(trktimes).flatten()
+        trkhdgs = np.array(trkhdgs).flatten()
         self.trkpts = xr.Variable(data=trkpts, dims=dim, attrs=attrspts)
         self.trktimes = xr.Variable(data=trktimes, dims=dim, attrs=attrstimes)
         self.trkhdgs = xr.Variable(data=trkhdgs, dims=dim, attrs=attrshdgs)
