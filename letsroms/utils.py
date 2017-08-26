@@ -103,6 +103,8 @@ def mk_basemap(bbox, topog=None, topog_style='contour', which_isobs=3, \
     ax.coastlines(resolution, zorder=3)
     if isinstance(topog, tuple):        # Plot topography passed as a
         lontopo, lattopo, htopo = topog # (lon, lat, h) tuple.
+    if topog is None:
+        pass
     else:
         raise IOError("'topog' must be a (lon, lat, topo) tuple or None.")
 
