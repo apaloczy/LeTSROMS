@@ -235,7 +235,7 @@ class RomsShip(object):
         return np.array(intarr)
 
 
-    def plt_trkmap(self, ax=None, \
+    def plt_trkmap(self, ax=None, bbox_zoom=None, \
                    topog='model', topog_style='contour', which_isobs=3, \
                    resolution='50m', borders=True, counties=False, rivers=True, \
                    cmap=deep, ncf=100, trkcolor='r', trkmarker='o', trkms=5, \
@@ -256,6 +256,7 @@ class RomsShip(object):
             elif isinstance(topog, tuple): # Plot other topography, passed
                 h = topog[2]               # as a (lon, lat, h) tuple.
 
+
             if which_isobs:
                 if np.isscalar(which_isobs): # Guess isobaths if not provided.
                     hmi, hma = np.ceil(h.min()), np.floor(h.max())
@@ -267,7 +268,7 @@ class RomsShip(object):
 
         # Plot base map and overlay ship track.
         if not inax:
-            kwm = dict(topog=topog, which_isobs=which_isobs, \
+            kwm = dict(topog=topog, bbox_zoom=bbox_zoom, which_isobs=which_isobs, \
                        topog_style=topog_style, resolution=resolution, \
                        borders=borders, counties=counties, rivers=rivers, \
                        cmap=cmap, ncf=ncf, manual_clabel=manual_clabel, crs=crs)
@@ -673,7 +674,7 @@ class RomsFleet(RomsShip):
         return None
 
 
-    def plt_trkmap(self, ax=None, \
+    def plt_trkmap(self, ax=None, bbox_zoom=None, \
                    topog='model', topog_style='contour', which_isobs=3, \
                    resolution='50m', borders=True, counties=False, rivers=True, \
                    cmap=deep, ncf=100, trkcolor='r', trkmarker='o', trkms=5, \
@@ -705,7 +706,7 @@ class RomsFleet(RomsShip):
 
         # Plot base map and overlay ship track.
         if not inax:
-            kwm = dict(topog=topog, which_isobs=which_isobs, \
+            kwm = dict(topog=topog, bbox_zoom=bbox_zoom, which_isobs=which_isobs, \
                        topog_style=topog_style, resolution=resolution, \
                        borders=borders, counties=counties, rivers=rivers, \
                        cmap=cmap, ncf=ncf, manual_clabel=manual_clabel, crs=crs)

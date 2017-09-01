@@ -74,9 +74,10 @@ def mk_transect(ax, ntransects, contiguous=True, shipspd=None, \
         return Xs, Ys, Ds
 
 
-def mk_basemap(bbox, topog=None, topog_style='contour', which_isobs=3, \
-               resolution='50m', borders=True, counties=False, rivers=True, \
-               cmap=deep, ncf=100, manual_clabel=False, crs=ccrs.PlateCarree()):
+def mk_basemap(bbox, bbox_zoom=None, topog=None, topog_style='contour', \
+               which_isobs=3, resolution='50m', borders=True, counties=False, \
+               rivers=True, cmap=deep, ncf=100, \
+               manual_clabel=False, crs=ccrs.PlateCarree()):
     """
     USAGE
     -----
@@ -84,6 +85,9 @@ def mk_basemap(bbox, topog=None, topog_style='contour', which_isobs=3, \
 
     Makes a base map covering the given 'bbox' [lonmin, lonmax, latmin, latmax].
     """
+    if bbox_zoom:
+        bbox = bbox_zoom
+
     fig, ax = plt.subplots(subplot_kw=dict(projection=crs))
     ax.set_extent(bbox, crs)
     LAND_hires = ctpy.feature.NaturalEarthFeature('physical', 'land', \
