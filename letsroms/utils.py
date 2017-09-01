@@ -13,6 +13,7 @@ __all__ = ['mk_transect',
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
 from xarray import DataArray, Variable
 from cmocean.cm import deep
 from ap_tools.utils import xy2dist, fmt_isobath
@@ -76,7 +77,7 @@ def mk_transect(ax, ntransects, contiguous=True, shipspd=None, \
 
 def mk_basemap(bbox, bbox_zoom=None, topog=None, topog_style='contour', \
                which_isobs=3, resolution='50m', borders=True, counties=False, \
-               rivers=True, cmap=deep, ncf=100, \
+               rivers=True, xycoast=None, cmap=deep, ncf=100, \
                manual_clabel=False, crs=ccrs.PlateCarree()):
     """
     USAGE
@@ -90,9 +91,19 @@ def mk_basemap(bbox, bbox_zoom=None, topog=None, topog_style='contour', \
 
     fig, ax = plt.subplots(subplot_kw=dict(projection=crs))
     ax.set_extent(bbox, crs)
-    LAND_hires = ctpy.feature.NaturalEarthFeature('physical', 'land', \
-    resolution, edgecolor='k', facecolor=[.9]*3)
-    ax.add_feature(LAND_hires, zorder=2, edgecolor='black')
+    if xycoast:
+        if isinstance(xycoast, Polygon):
+            coast = xycoast
+        else:
+            xcoast, ycoast = xycoast
+            coast = Polygon(np.hstack((xcoast[:,np.newaxis], ycoast[:,np.newaxis])), closed=True, fill=True, facecolor='lightgray', edgecolor='k')
+        ax.add_patch(coast)
+    else:
+        LAND_hires = ctpy.feature.NaturalEarthFeature('physical', 'land', \
+        resolution, edgecolor='k', facecolor=[.9]*3)
+        ax.add_feature(LAND_hires, zorder=2, edgecolor='black')
+        ax.coastlines(resolution, zorder=3)
+
     if borders:
         ax.add_feature(ctpy.feature.BORDERS, linewidth=0.5, zorder=3)
     if counties:
@@ -104,7 +115,6 @@ def mk_basemap(bbox, bbox_zoom=None, topog=None, topog_style='contour', \
         ax.add_feature(provinces2, linewidth=0.5, zorder=3)
     if rivers:
         ax.add_feature(ctpy.feature.RIVERS, zorder=3)
-    ax.coastlines(resolution, zorder=3)
     if isinstance(topog, tuple):        # Plot topography passed as a
         lontopo, lattopo, htopo = topog # (lon, lat, h) tuple.
     if topog is None:
@@ -132,7 +142,8 @@ def mk_basemap(bbox, bbox_zoom=None, topog=None, topog_style='contour', \
     gl.ylabels_right = False
     gl.xformatter = LONGITUDE_FORMATTER
     gl.yformatter = LATITUDE_FORMATTER
-    plt.setp(ax.xaxis.get_majorticklabels(), rotation=90)
+    gltl = ax.xaxis.get_majorticklabels()
+    ax.xaxis.set_ticklabels(gltl, rotation=45)
     plt.draw()
 
     return fig, ax

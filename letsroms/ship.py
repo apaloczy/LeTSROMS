@@ -4,6 +4,7 @@
 
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.patches import Polygon
 from mpl_toolkits.mplot3d import Axes3D
 from datetime import datetime, timedelta
 from pandas import to_datetime, Timestamp
@@ -235,7 +236,7 @@ class RomsShip(object):
         return np.array(intarr)
 
 
-    def plt_trkmap(self, ax=None, bbox_zoom=None, \
+    def plt_trkmap(self, ax=None, bbox_zoom=None, xycoast=None, \
                    topog='model', topog_style='contour', which_isobs=3, \
                    resolution='50m', borders=True, counties=False, rivers=True, \
                    cmap=deep, ncf=100, trkcolor='r', trkmarker='o', trkms=5, \
@@ -268,9 +269,9 @@ class RomsShip(object):
 
         # Plot base map and overlay ship track.
         if not inax:
-            kwm = dict(topog=topog, bbox_zoom=bbox_zoom, which_isobs=which_isobs, \
-                       topog_style=topog_style, resolution=resolution, \
-                       borders=borders, counties=counties, rivers=rivers, \
+            kwm = dict(topog=topog, bbox_zoom=bbox_zoom, xycoast=xycoast, \
+                       which_isobs=which_isobs, topog_style=topog_style, resolution=resolution, borders=borders, \
+                       counties=counties, rivers=rivers, \
                        cmap=cmap, ncf=ncf, manual_clabel=manual_clabel, crs=crs)
             fig, ax = mk_basemap(self.bbox, **kwm)
 
@@ -674,7 +675,7 @@ class RomsFleet(RomsShip):
         return None
 
 
-    def plt_trkmap(self, ax=None, bbox_zoom=None, \
+    def plt_trkmap(self, ax=None, bbox_zoom=None, xycoast=None, \
                    topog='model', topog_style='contour', which_isobs=3, \
                    resolution='50m', borders=True, counties=False, rivers=True, \
                    cmap=deep, ncf=100, trkcolor='r', trkmarker='o', trkms=5, \
@@ -707,7 +708,7 @@ class RomsFleet(RomsShip):
         # Plot base map and overlay ship track.
         if not inax:
             kwm = dict(topog=topog, bbox_zoom=bbox_zoom, which_isobs=which_isobs, \
-                       topog_style=topog_style, resolution=resolution, \
+                       xycoast=xycoast, topog_style=topog_style, resolution=resolution, \
                        borders=borders, counties=counties, rivers=rivers, \
                        cmap=cmap, ncf=ncf, manual_clabel=manual_clabel, crs=crs)
             fig, ax = mk_basemap(self.bbox, **kwm)
