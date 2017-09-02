@@ -133,7 +133,7 @@ class RomsShip(object):
     def __add__(self, other):
         assertstr = "objects being added must be 'letsroms.RomsShip' or 'letsroms.RomsFleet' instances"
         assert isinstance(other, RomsShip) or isinstance(other, RomsFleet), assertstr
-        if isinstance(other, RomsShip): # The 2 ships being added are the first ones.
+        if isinstance(other, RomsShip):    # The 2 ships being added are the first ones.
             return RomsFleet(self, other)
         elif isinstance(other, RomsFleet): # (this ship) + (a N-ships fleet) ...
             return other + self            # = [a (N+1)-ships fleet].
@@ -239,9 +239,10 @@ class RomsShip(object):
     def plt_trkmap(self, ax=None, bbox_zoom=None, xycoast=None, \
                    topog='model', topog_style='contour', which_isobs=3, \
                    resolution='50m', borders=True, counties=False, rivers=True, \
-                   cmap=deep, ncf=100, trkcolor='r', trkmarker='o', trkms=5, \
-                   trkmfc='r', trkmec='r', manual_clabel=False, \
-                   crs=ccrs.PlateCarree()):
+                   cmap=deep, ncf=100, trklinewidth=1.0, trklinestyle='solid', \
+                   trkcolor='r', trkmarker='o', trkms=5, trkmfc='r', trkmec='r', \
+                   manual_clabel=False, draw_labels=True, \
+                   xlocs=None, ylocs=None, crs=ccrs.PlateCarree()):
         """
         Plot topography map with the ship track overlaid.
         """
@@ -250,13 +251,12 @@ class RomsShip(object):
         else:
             inax = True
 
-        if topog: # Skip if don't want any topography.
+        if topog:              # Skip if don't want any topography.
             if topog=='model': # Plot model topography.
                 topog = self.lonr, self.latr, self.h
                 h = self.h
             elif isinstance(topog, tuple): # Plot other topography, passed
                 h = topog[2]               # as a (lon, lat, h) tuple.
-
 
             if which_isobs:
                 if np.isscalar(which_isobs): # Guess isobaths if not provided.
@@ -270,12 +270,15 @@ class RomsShip(object):
         # Plot base map and overlay ship track.
         if not inax:
             kwm = dict(topog=topog, bbox_zoom=bbox_zoom, xycoast=xycoast, \
-                       which_isobs=which_isobs, topog_style=topog_style, resolution=resolution, borders=borders, \
+                       which_isobs=which_isobs, topog_style=topog_style, \
+                       resolution=resolution, borders=borders, \
                        counties=counties, rivers=rivers, \
+                       xlocs=xlocs, ylocs=ylocs, draw_labels=draw_labels, \
                        cmap=cmap, ncf=ncf, manual_clabel=manual_clabel, crs=crs)
             fig, ax = mk_basemap(self.bbox, **kwm)
 
-        ax.plot(self.xship, self.yship, linestyle='-', color=trkcolor, \
+        ax.plot(self.xship, self.yship, color=trkcolor,\
+                linestyle=trklinestyle, linewidth=trklinewidth, \
                 marker=trkmarker, ms=trkms, mfc=trkmfc, mec=trkmec, zorder=4)
 
         if not inax:
@@ -678,9 +681,10 @@ class RomsFleet(RomsShip):
     def plt_trkmap(self, ax=None, bbox_zoom=None, xycoast=None, \
                    topog='model', topog_style='contour', which_isobs=3, \
                    resolution='50m', borders=True, counties=False, rivers=True, \
-                   cmap=deep, ncf=100, trkcolor='r', trkmarker='o', trkms=5, \
-                   trkmfc='r', trkmec='r', manual_clabel=False, \
-                   crs=ccrs.PlateCarree()):
+                   cmap=deep, ncf=100, trklinewidth=1.0, trklinestyle='solid', \
+                   trkcolor='r', trkmarker='o', trkms=5, trkmfc='r', trkmec='r',\
+                   manual_clabel=False, draw_labels=True, \
+                   xlocs=None, ylocs=None, crs=ccrs.PlateCarree()):
         """
         Plot topography map with the tracks of all ships overlaid.
         """
@@ -689,7 +693,7 @@ class RomsFleet(RomsShip):
         else:
             inax = True
 
-        if topog: # Skip if don't want any topography.
+        if topog:              # Skip if don't want any topography.
             if topog=='model': # Plot model topography.
                 topog = self.lonr, self.latr, self.h
                 h = self.h
@@ -710,13 +714,15 @@ class RomsFleet(RomsShip):
             kwm = dict(topog=topog, bbox_zoom=bbox_zoom, which_isobs=which_isobs, \
                        xycoast=xycoast, topog_style=topog_style, resolution=resolution, \
                        borders=borders, counties=counties, rivers=rivers, \
+                       xlocs=xlocs, ylocs=ylocs, draw_labels=draw_labels, \
                        cmap=cmap, ncf=ncf, manual_clabel=manual_clabel, crs=crs)
             fig, ax = mk_basemap(self.bbox, **kwm)
 
         for shipk in self.shipsdict.keys():
             shipv = self.shipsdict[shipk]
-            ax.plot(shipv.xship, shipv.yship, linestyle='-', color=trkcolor, \
-                    marker=trkmarker, ms=trkms, mfc=trkmfc, mec=trkmec, zorder=4)
+            ax.plot(shipv.xship, shipv.yship, linewidth=trklinewidth, \
+                    linestyle=trklinestyle, color=trkcolor, marker=trkmarker, \
+                    ms=trkms, mfc=trkmfc, mec=trkmec, zorder=4)
 
         if not inax:
             return fig, ax

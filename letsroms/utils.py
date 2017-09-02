@@ -14,6 +14,7 @@ __all__ = ['mk_transect',
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
+import matplotlib.ticker as mticker
 from xarray import DataArray, Variable
 from cmocean.cm import deep
 from ap_tools.utils import xy2dist, fmt_isobath
@@ -27,7 +28,7 @@ m2km = 1e-3     # [km/m]
 
 
 def mk_transect(ax, ntransects, contiguous=True, shipspd=None, \
-                bbox_zoom=None, crs=ccrs.PlateCarree()):
+                bbox_zoom=None, color='r', crs=ccrs.PlateCarree()):
     """
     USAGE
     -----
@@ -68,8 +69,10 @@ def mk_transect(ax, ntransects, contiguous=True, shipspd=None, \
         Xs, Ys = Xs[-1], Ys[-1]
 
     if shipspd:
+        Dstot = Ds.sum()
         print('')
-        print("Total occupation time at %.1f kn ---------> %.2f h"%(shipspd, Ts.sum()))
+        print("Total distance steamed -------------------> %.2f km / %.2f nm"%(Dstot, Dstot*km2nm))
+        print("Total occupation time at %.1f kn ----------> %.2f h"%(shipspd, Ts.sum()))
         return Xs, Ys, Ds, Ts
     else:
         return Xs, Ys, Ds
@@ -78,7 +81,8 @@ def mk_transect(ax, ntransects, contiguous=True, shipspd=None, \
 def mk_basemap(bbox, bbox_zoom=None, topog=None, topog_style='contour', \
                which_isobs=3, resolution='50m', borders=True, counties=False, \
                rivers=True, xycoast=None, cmap=deep, ncf=100, \
-               manual_clabel=False, crs=ccrs.PlateCarree()):
+               xlocs=None, ylocs=None, manual_clabel=False, \
+               draw_labels=True, crs=ccrs.PlateCarree()):
     """
     USAGE
     -----
@@ -97,7 +101,8 @@ def mk_basemap(bbox, bbox_zoom=None, topog=None, topog_style='contour', \
         else:
             xcoast, ycoast = xycoast
             coast = Polygon(np.hstack((xcoast[:,np.newaxis], ycoast[:,np.newaxis])), closed=True, fill=True, facecolor='lightgray', edgecolor='k')
-        ax.add_patch(coast)
+        ptch = ax.add_patch(coast)
+        ptch.set_zorder(9999)
     else:
         LAND_hires = ctpy.feature.NaturalEarthFeature('physical', 'land', \
         resolution, edgecolor='k', facecolor=[.9]*3)
@@ -117,10 +122,10 @@ def mk_basemap(bbox, bbox_zoom=None, topog=None, topog_style='contour', \
         ax.add_feature(ctpy.feature.RIVERS, zorder=3)
     if isinstance(topog, tuple):        # Plot topography passed as a
         lontopo, lattopo, htopo = topog # (lon, lat, h) tuple.
-    if topog is None:
+    elif topog is None:
         pass
     else:
-        raise IOError("'topog' must be a (lon, lat, topo) tuple or None.")
+        raise IOError("'topog' must be a (lon, lat, topo), tuple or None.")
 
     if topog is not None:
         if topog_style=='contour' or topog_style=='both':
@@ -137,14 +142,10 @@ def mk_basemap(bbox, bbox_zoom=None, topog=None, topog_style='contour', \
         if topog_style=='contourf':
             ax.contourf(lontopo, lattopo, htopo, ncf, cmap=cmap, zorder=0)
 
-    gl = ax.gridlines(draw_labels=True, zorder=5)
-    gl.xlabels_top = False
-    gl.ylabels_right = False
+    gl = ax.gridlines(draw_labels=draw_labels, color='gray', alpha=0.5, linestyle=':', \
+                      zorder=5)
     gl.xformatter = LONGITUDE_FORMATTER
     gl.yformatter = LATITUDE_FORMATTER
-    gltl = ax.xaxis.get_majorticklabels()
-    ax.xaxis.set_ticklabels(gltl, rotation=45)
-    plt.draw()
 
     return fig, ax
 
