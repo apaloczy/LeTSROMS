@@ -918,6 +918,9 @@ class ShipTrack(object):
         segidxm = self.segment_indexm.data
         consec_segment_indexm = segidxm + self.nsegs*(occidxm - 1)
 
+        alongtrack_distance = np.append(0, np.cumsum(seg_lengths))
+        self.alongtrack_distance = xr.Variable(data=alongtrack_distance, \
+                                               dims=dim, attrs=dict(units='km'))
         self.consec_segment_index = xr.Variable(data=np.int32(consec_segment_index), \
                                                 dims=dim, attrs=attrscscseg)
         self.consec_segment_indexm = xr.Variable(data=np.int32(consec_segment_indexm), \
@@ -927,9 +930,10 @@ class ShipTrack(object):
         seg_coords = {'segment index':segment_index}
         seg_dims = 'segment index'
 
+
         self.seg_lengths = xr.DataArray(seg_lengths, coords=seg_coords,
                                         dims=seg_dims, name='Length of each \
-                                        segment of the track')
+                                        segment of the track', attrs=dict(units='km'))
         self.seg_times = xr.DataArray(seg_times, coords=seg_coords, dims=seg_dims,
                                         name='Duration of each segment of the track')
         self.seg_npoints = xr.DataArray(seg_npoints, coords=seg_coords, dims=seg_dims,
